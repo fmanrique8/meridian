@@ -1,0 +1,61 @@
+# IDE/editor noise
+.idea/
+.idea_modules/
+*.iml
+out/
+.vscode/
+*.code-workspace
+*.swp
+*.swo
+*~
+
+# OS noise
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments and local Python version pins
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Test/tool caches and reports
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Build/distribution outputs
+build/
+dist/
+site/
+.eggs/
+*.egg-info/
+pip-wheel-metadata/
+
+# Runtime logs/artifacts
+*.log
+*.pid
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+.envrc

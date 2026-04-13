@@ -1,0 +1,106 @@
+##########################
+# Kedro project-specific
+
+# Local configuration (keep placeholder only)
+conf/local/**
+!conf/local/.gitkeep
+
+# Potentially sensitive credentials files
+conf/**/*credentials*
+
+# Ignore pipeline data artifacts; keep folder structure and .gitkeep placeholders
+data/**
+!data/**/
+!.gitkeep
+
+# Kedro metadata
+.telemetry
+.viz
+
+##########################
+# IDE/editor noise
+
+.idea/
+.idea_modules/
+*.iml
+out/
+.vscode/
+*.swp
+*.swo
+*~
+
+##########################
+# OS noise
+
+.DS_Store
+.AppleDouble
+.LSOverride
+.Trashes
+Thumbs.db
+Desktop.ini
+
+##########################
+# Python cache and build artifacts
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+.Python
+build/
+dist/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+MANIFEST
+
+##########################
+# Virtual environments and local env files
+
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+!.env.example
+.envrc
+.python-version
+
+##########################
+# Test/tool caches and reports
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+nosetests.xml
+*.cover
+
+##########################
+# Runtime logs and misc generated files
+
+*.log
+pip-log.txt
+pip-delete-this-directory.txt
+.ipynb_checkpoints/
+instance/
+.webassets-cache
+celerybeat-schedule
+mlruns/
