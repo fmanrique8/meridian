@@ -1,27 +1,18 @@
-"""
-This module contains example tests for a Kedro project.
-Tests should be placed in ``src/tests``, in modules that mirror your
-project's structure, and in files named test_*.py.
-"""
-
-import pytest
 from pathlib import Path
+
 from kedro.framework.session import KedroSession
 from kedro.framework.startup import bootstrap_project
 
-# The tests below are here for the demonstration purpose
-# and should be replaced with the ones testing the project
-# functionality
-
 
 class TestKedroRun:
-    def test_kedro_run_no_pipeline(self):
-        # This example test expects a pipeline run failure, since
-        # the default project template contains no pipelines.
-        bootstrap_project(Path.cwd())
+    def test_kedro_run_default_pipeline(self, monkeypatch):
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test-key")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test-secret")
+        monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-2")
+        monkeypatch.setenv("S3_BUCKET_NAME", "meridian-test")
 
-        with pytest.raises(Exception) as excinfo:
-            with KedroSession.create(project_path=Path.cwd()) as session:
-                session.run()
+        project_path = Path(__file__).resolve().parents[1]
+        bootstrap_project(project_path)
 
-        assert "Pipeline contains no nodes" in str(excinfo.value)
+        with KedroSession.create(project_path=project_path) as session:
+            session.run()
