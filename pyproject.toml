@@ -22,3 +22,7 @@ dependencies = [
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+
+[tool.black]
+target-version = ["py312"]
+line-length = 88
