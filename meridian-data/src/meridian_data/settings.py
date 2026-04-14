@@ -2,6 +2,11 @@
 from the Kedro defaults. For further information, including these default values, see
 https://docs.kedro.org/en/stable/configure/configuration_basics/#configuration"""
 
+from meridian_data.config import bootstrap_env
+
+# Load `.env` values once at startup while preserving explicitly exported OS env vars.
+bootstrap_env()
+
 # Instantiated project hooks.
 # For example, after creating a hooks.py and defining a ProjectHooks class there, do
 # from meridian_data.hooks import ProjectHooks
