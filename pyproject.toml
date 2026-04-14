@@ -1,7 +1,7 @@
 [project]
 name = "meridian"
 version = "0.1.0"
-description = "Add your description here"
+description = "Data platform for Meridian analytics and decision support."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -14,6 +14,11 @@ dependencies = [
     "kedro-datasets>=9.3.0",
     "polars>=1.39.3",
     "pyarrow>=23.0.1",
+    "pytest>=8.4.2",
     "pydantic>=2.13.0",
     "python-dotenv>=1.2.2",
 ]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
