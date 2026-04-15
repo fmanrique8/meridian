@@ -161,9 +161,12 @@ def partition_fred_series_latest(
     partition_values = with_partition_keys.select(
         ["series_id_partition", "year_partition"]
     ).unique()
-    for value in partition_values.iter_rows(named=True):
-        series_id = str(value["series_id_partition"])
-        year = int(value["year_partition"])
+    series_ids = partition_values.get_column("series_id_partition").to_list()
+    years = partition_values.get_column("year_partition").to_list()
+
+    for series_id_value, year_value in zip(series_ids, years, strict=True):
+        series_id = str(series_id_value)
+        year = int(year_value)
         key = f"series_id={series_id}/year={year}/fred_series_latest"
         partitions[key] = with_partition_keys.filter(
             (pl.col("series_id_partition") == series_id)

@@ -1,0 +1,19 @@
+macro__fred__raw__series:
+  type: partitions.PartitionedDataset
+  path: s3://${oc.env:S3_BUCKET_NAME}/meridian/01_raw/macro/fred/series
+  filename_suffix: ".parquet"
+  dataset:
+    type: polars.EagerPolarsDataset
+    file_format: parquet
+    save_args:
+      compression: zstd
+
+macro__fred__primary__series_latest:
+  type: partitions.PartitionedDataset
+  path: s3://${oc.env:S3_BUCKET_NAME}/meridian/03_primary/macro/fred/series_latest
+  filename_suffix: ".parquet"
+  dataset:
+    type: polars.EagerPolarsDataset
+    file_format: parquet
+    save_args:
+      compression: zstd

@@ -93,7 +93,12 @@ def test_catalog_credentials_resolve_without_credentials_node(monkeypatch) -> No
     _set_s3_env(monkeypatch)
 
     conf_path = PROJECT_ROOT / "conf"
-    loader = OmegaConfigLoader(conf_source=str(conf_path), env="local")
+    loader = OmegaConfigLoader(
+        conf_source=str(conf_path),
+        env="local",
+        base_env="base",
+        default_run_env="local",
+    )
     credentials = loader["credentials"]
 
     catalog_config = {
@@ -122,8 +127,47 @@ def test_parameters_resolve_s3_bucket_name(monkeypatch) -> None:
     loader = OmegaConfigLoader(
         conf_source=str(conf_path),
         env="local",
+        base_env="base",
+        default_run_env="local",
         custom_resolvers={"oc.env": lambda key, default=None: os.getenv(key, default)},
     )
     parameters = loader["parameters"]
 
     assert parameters["s3"]["bucket_name"] == "meridian-test"
+
+
+def test_prod_env_resolves_fred_catalog_s3_paths_and_credentials(monkeypatch) -> None:
+    _set_s3_env(monkeypatch)
+
+    conf_path = PROJECT_ROOT / "conf"
+    loader = OmegaConfigLoader(
+        conf_source=str(conf_path),
+        env="prod",
+        base_env="base",
+        default_run_env="local",
+        custom_resolvers={"oc.env": lambda key, default=None: os.getenv(key, default)},
+    )
+
+    credentials = loader["credentials"]
+    catalog = loader["catalog"]
+
+    assert credentials["s3"]["key"] == "test-key"
+    assert credentials["s3"]["secret"] == "test-secret"
+    assert credentials["s3"]["client_kwargs"]["region_name"] == "us-east-2"
+    assert credentials["fred"]["api_key"] == "fred-test-key"
+
+    assert (
+        catalog["macro__fred__raw__series"]["path"]
+        == "s3://meridian-test/meridian/01_raw/macro/fred/series"
+    )
+    assert (
+        catalog["macro__fred__raw__series"]["type"] == "partitions.PartitionedDataset"
+    )
+    assert (
+        catalog["macro__fred__primary__series_latest"]["path"]
+        == "s3://meridian-test/meridian/03_primary/macro/fred/series_latest"
+    )
+    assert (
+        catalog["macro__fred__primary__series_latest"]["type"]
+        == "partitions.PartitionedDataset"
+    )

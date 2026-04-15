@@ -36,10 +36,23 @@ Configured under `conf/base/parameters.yml` as `fred`:
   - `sort_order` default: `asc`
   - `limit` optional
   - `run_date` optional (defaults to current date if unset)
-- Series list (v1):
-  - `FEDFUNDS`
-  - `CPIAUCSL`
-  - `UNRATE`
+- Series list (v1 Wave 1):
+  - Inflation:
+    - `CPIAUCSL` (headline CPI)
+    - `CPILFESL` (core CPI)
+    - `PCEPI` (headline PCE)
+    - `PCEPILFE` (core PCE)
+  - Labor:
+    - `UNRATE` (unemployment rate)
+    - `PAYEMS` (nonfarm payrolls)
+    - `CIVPART` (labor force participation)
+    - `ICSA` (initial jobless claims)
+  - Rates / liquidity:
+    - `FEDFUNDS` (monthly policy-rate proxy)
+    - `DFF` (daily effective fed funds rate)
+    - `DGS10` (10-year treasury yield)
+    - `DGS2` (2-year treasury yield)
+    - `T10Y2Y` (10Y-2Y spread)
 
 ## Outputs and Partition Strategy
 
@@ -57,12 +70,42 @@ Defined in `conf/base/catalog.yml`:
 
 Both outputs are Parquet via `polars.EagerPolarsDataset`.
 
+When running with `--env=prod`, `conf/prod/catalog.yml` overrides these paths to S3:
+
+- `macro__fred__raw__series`
+  - `s3://${S3_BUCKET_NAME}/meridian/01_raw/macro/fred/series`
+- `macro__fred__primary__series_latest`
+  - `s3://${S3_BUCKET_NAME}/meridian/03_primary/macro/fred/series_latest`
+
 ## Run and Test
 
-- Run only this pipeline:
+- Run local filesystem output:
   - `kedro run --pipelines=fred`
+- Run S3 output using prod config:
+  - `kedro run --env=prod --pipelines=fred`
+  - Note: S3 runs require `s3fs` (included in project dependencies).
 - Targeted tests:
   - `pytest tests/pipelines/macro/fred -q`
+
+## Remaining Sources Backlog
+
+- Remaining FRED from current framework:
+  - `GDPC1` (real GDP; planned next wave)
+- Remaining non-FRED sources:
+  - BLS labor detail:
+    - sector-level employment
+    - wage metrics / average hourly earnings
+    - JOLTS-style labor tightness signals
+  - EIA energy:
+    - WTI crude
+    - gasoline-related series
+    - natural gas (optional early add)
+  - Market feed:
+    - index ETFs (`SPY`, `QQQ`, `IWM`)
+    - sector ETFs (`XLE`, `XLK`, `XLF`, `XLI`, `XLP`, `XLV`, `XLRE`)
+    - overlays (`TLT`, `GLD`, `VIX` or proxy)
+  - Discretionary big-cap overlay:
+    - `AAPL`, `AMZN`, `GOOGL`, `META`, `NVDA`, `ORCL`
 
 ## How We Extend It
 
@@ -75,4 +118,3 @@ Both outputs are Parquet via `polars.EagerPolarsDataset`.
 - Change partitioning:
   - Keep `run_date` snapshots for lineage.
   - Tune serving partitions in `partition_fred_series_latest` for query patterns.
-
