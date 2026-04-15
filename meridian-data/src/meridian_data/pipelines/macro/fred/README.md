@@ -1,6 +1,8 @@
 # FRED Pipeline (`macro/fred`)
 
-This pipeline ingests selected macroeconomic series from the St. Louis Fed FRED API, normalizes them into a long-format table, and writes two partitioned outputs for different use cases.
+This pipeline ingests macroeconomic series from the St. Louis Fed FRED API,
+normalizes them into a long-format table, and writes two partitioned outputs
+for lineage and serving use cases.
 
 ## What We Have So Far
 
@@ -36,7 +38,7 @@ Configured under `conf/base/parameters.yml` as `fred`:
   - `sort_order` default: `asc`
   - `limit` optional
   - `run_date` optional (defaults to current date if unset)
-- Series list (v1 Wave 1):
+- Series list (v1 core FRED set complete):
   - Inflation:
     - `CPIAUCSL` (headline CPI)
     - `CPILFESL` (core CPI)
@@ -47,12 +49,17 @@ Configured under `conf/base/parameters.yml` as `fred`:
     - `PAYEMS` (nonfarm payrolls)
     - `CIVPART` (labor force participation)
     - `ICSA` (initial jobless claims)
+  - Growth:
+    - `GDPC1` (real GDP, quarterly)
   - Rates / liquidity:
     - `FEDFUNDS` (monthly policy-rate proxy)
     - `DFF` (daily effective fed funds rate)
     - `DGS10` (10-year treasury yield)
     - `DGS2` (2-year treasury yield)
     - `T10Y2Y` (10Y-2Y spread)
+
+Mixed frequencies (daily, weekly, monthly, quarterly) are stored as-ingested in
+Layer 0/1 ingestion for this wave; no resampling is applied.
 
 ## Outputs and Partition Strategy
 
@@ -67,6 +74,13 @@ Defined in `conf/base/catalog.yml`:
   - Path: `data/03_primary/macro/fred/series_latest`
   - Partition key shape: `series_id=<ID>/year=<YYYY>/fred_series_latest.parquet`
   - Purpose: efficient downstream reads by indicator and time
+
+Partition strategy rationale:
+
+- `run_date` partitions preserve immutable snapshot lineage for audits and
+  backtests.
+- `series_id/year` partitions support cheap query pruning for downstream
+  readers.
 
 Both outputs are Parquet via `polars.EagerPolarsDataset`.
 
@@ -87,25 +101,36 @@ When running with `--env=prod`, `conf/prod/catalog.yml` overrides these paths to
 - Targeted tests:
   - `pytest tests/pipelines/macro/fred -q`
 
-## Remaining Sources Backlog
+## Layer-1 Signal Status
 
-- Remaining FRED from current framework:
-  - `GDPC1` (real GDP; planned next wave)
-- Remaining non-FRED sources:
-  - BLS labor detail:
-    - sector-level employment
-    - wage metrics / average hourly earnings
-    - JOLTS-style labor tightness signals
-  - EIA energy:
-    - WTI crude
-    - gasoline-related series
-    - natural gas (optional early add)
-  - Market feed:
-    - index ETFs (`SPY`, `QQQ`, `IWM`)
-    - sector ETFs (`XLE`, `XLK`, `XLF`, `XLI`, `XLP`, `XLV`, `XLRE`)
-    - overlays (`TLT`, `GLD`, `VIX` or proxy)
-  - Discretionary big-cap overlay:
-    - `AAPL`, `AMZN`, `GOOGL`, `META`, `NVDA`, `ORCL`
+Layer-1 signal computation is intentionally deferred in this wave.
+No signal nodes are added yet for:
+
+- `inflation_state`
+- `labor_state`
+- `growth_state`
+- `liquidity_state`
+- `macro_regime`
+
+Signal logic starts after ingestion architecture gates are completed for the
+remaining non-FRED source families.
+
+## Remaining Sources Backlog (Non-FRED)
+
+- BLS labor detail:
+  - sector-level employment
+  - wage metrics / average hourly earnings
+  - JOLTS-style labor tightness signals
+- EIA energy:
+  - WTI crude
+  - gasoline-related series
+  - natural gas (optional early add)
+- Market feed (Twelve Data target):
+  - index ETFs (`SPY`, `QQQ`, `IWM`)
+  - sector ETFs (`XLE`, `XLK`, `XLF`, `XLI`, `XLP`, `XLV`, `XLRE`)
+  - overlays (`TLT`, `GLD`, `VIX` or proxy)
+- Discretionary big-cap overlay:
+  - `AAPL`, `AMZN`, `GOOGL`, `META`, `NVDA`, `ORCL`
 
 ## How We Extend It
 

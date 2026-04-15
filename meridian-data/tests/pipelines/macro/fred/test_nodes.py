@@ -11,8 +11,9 @@ from meridian_data.pipelines.macro.fred.schemas import (
     FredSeriesMetadata,
 )
 
-EXPECTED_ROWS = 6
+EXPECTED_ROWS = 8
 EXPECTED_ROWS_PER_SERIES_YEAR = 2
+EXPECTED_GDPC1_ROWS = 2
 
 
 class StubFredClient:
@@ -27,10 +28,11 @@ class StubFredClient:
         return None
 
     def get_series(self, series_id: str) -> FredSeriesMetadata:
+        frequency = "Quarterly" if series_id == "GDPC1" else "Monthly"
         return FredSeriesMetadata(
             id=series_id,
             title=f"{series_id} title",
-            frequency="Monthly",
+            frequency=frequency,
             units="Percent",
             seasonal_adjustment="Seasonally Adjusted",
             last_updated="2026-04-15 12:00:00-05",
@@ -45,6 +47,11 @@ class StubFredClient:
         sort_order: str = "asc",  # noqa: ARG002
         limit: int | None = None,  # noqa: ARG002
     ) -> list[FredObservation]:
+        if series_id == "GDPC1":
+            return [
+                FredObservation(date="2025-10-01", value="22857.30"),
+                FredObservation(date="2026-01-01", value="22931.20"),
+            ]
         if series_id == "CPIAUCSL":
             return [
                 FredObservation(date="2026-02-01", value="."),
@@ -66,7 +73,7 @@ def _fred_parameters() -> dict[str, Any]:
         "jitter_seconds": 0.0,
         "observation_start": "2026-02-01",
         "sort_order": "asc",
-        "series_ids": ["FEDFUNDS", "CPIAUCSL", "UNRATE"],
+        "series_ids": ["FEDFUNDS", "CPIAUCSL", "UNRATE", "GDPC1"],
         "run_date": "2026-04-15",
     }
 
@@ -88,6 +95,10 @@ def test_ingest_process_and_partition_fred_series(monkeypatch) -> None:
         processed_df.filter(pl.col("series_id") == "CPIAUCSL")["value"].null_count()
         == 1
     )
+    gdpc1_df = processed_df.filter(pl.col("series_id") == "GDPC1")
+    assert gdpc1_df.height == EXPECTED_GDPC1_ROWS
+    assert gdpc1_df["frequency"].unique().to_list() == ["Quarterly"]
+    assert gdpc1_df["date"].to_list() == [date(2025, 10, 1), date(2026, 1, 1)]
     assert processed_df["run_date"].unique().to_list() == [date(2026, 4, 15)]
 
     partitions = nodes.partition_fred_series(processed_df)
@@ -100,12 +111,16 @@ def test_ingest_process_and_partition_fred_series(monkeypatch) -> None:
     assert sorted(latest_partitions.keys()) == [
         "series_id=CPIAUCSL/year=2026/fred_series_latest",
         "series_id=FEDFUNDS/year=2026/fred_series_latest",
+        "series_id=GDPC1/year=2025/fred_series_latest",
+        "series_id=GDPC1/year=2026/fred_series_latest",
         "series_id=UNRATE/year=2026/fred_series_latest",
     ]
     assert (
         latest_partitions["series_id=FEDFUNDS/year=2026/fred_series_latest"].height
         == EXPECTED_ROWS_PER_SERIES_YEAR
     )
+    assert latest_partitions["series_id=GDPC1/year=2025/fred_series_latest"].height == 1
+    assert latest_partitions["series_id=GDPC1/year=2026/fred_series_latest"].height == 1
 
 
 def test_process_fred_series_handles_empty_input() -> None:

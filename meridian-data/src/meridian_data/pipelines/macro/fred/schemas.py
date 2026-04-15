@@ -8,7 +8,22 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 DEFAULT_FRED_BASE_URL = "https://api.stlouisfed.org/fred"
-DEFAULT_FRED_SERIES_IDS = ["FEDFUNDS", "CPIAUCSL", "UNRATE"]
+DEFAULT_FRED_SERIES_IDS = [
+    "CPIAUCSL",
+    "CPILFESL",
+    "PCEPI",
+    "PCEPILFE",
+    "UNRATE",
+    "PAYEMS",
+    "CIVPART",
+    "ICSA",
+    "GDPC1",
+    "FEDFUNDS",
+    "DFF",
+    "DGS10",
+    "DGS2",
+    "T10Y2Y",
+]
 
 
 class FredSeriesMetadata(BaseModel):

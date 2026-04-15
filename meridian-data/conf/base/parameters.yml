@@ -26,6 +26,9 @@ fred:
     - CIVPART
     - ICSA
 
+    # ----- growth
+    - GDPC1
+
     # ----- rates / liquidity
     - FEDFUNDS
     - DFF

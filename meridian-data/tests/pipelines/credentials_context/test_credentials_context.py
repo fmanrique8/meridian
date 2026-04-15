@@ -134,6 +134,7 @@ def test_parameters_resolve_s3_bucket_name(monkeypatch) -> None:
     parameters = loader["parameters"]
 
     assert parameters["s3"]["bucket_name"] == "meridian-test"
+    assert "GDPC1" in parameters["fred"]["series_ids"]
 
 
 def test_prod_env_resolves_fred_catalog_s3_paths_and_credentials(monkeypatch) -> None:
