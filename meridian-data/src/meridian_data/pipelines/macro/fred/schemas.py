@@ -8,22 +8,26 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 DEFAULT_FRED_BASE_URL = "https://api.stlouisfed.org/fred"
-DEFAULT_FRED_SERIES_IDS = [
-    "CPIAUCSL",
-    "CPILFESL",
-    "PCEPI",
-    "PCEPILFE",
-    "UNRATE",
-    "PAYEMS",
-    "CIVPART",
-    "ICSA",
-    "GDPC1",
-    "FEDFUNDS",
-    "DFF",
-    "DGS10",
-    "DGS2",
-    "T10Y2Y",
-]
+
+
+class FredDataQualityParameters(BaseModel):
+    """Data-quality assertions for processed FRED observations."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    max_null_ratio_per_series: float = 0.2
+    enforce_monotonic_dates: bool = True
+    enforce_unique_series_date: bool = True
+    enforce_numeric_parse: bool = True
+    enforce_valid_dates: bool = True
+
+    @field_validator("max_null_ratio_per_series")
+    @classmethod
+    def validate_max_null_ratio_per_series(cls, value: float) -> float:
+        """Ensure null-ratio threshold is between 0 and 1."""
+        if value < 0.0 or value > 1.0:
+            raise ValueError("max_null_ratio_per_series must be between 0.0 and 1.0.")
+        return value
 
 
 class FredSeriesMetadata(BaseModel):
@@ -81,7 +85,10 @@ class FredPipelineParameters(BaseModel):
     sort_order: Literal["asc", "desc"] = "asc"
     limit: int | None = None
     run_date: date | None = None
-    series_ids: list[str] = Field(default_factory=lambda: list(DEFAULT_FRED_SERIES_IDS))
+    series_ids: list[str]
+    data_quality: FredDataQualityParameters = Field(
+        default_factory=FredDataQualityParameters
+    )
 
     @field_validator("api_key")
     @classmethod

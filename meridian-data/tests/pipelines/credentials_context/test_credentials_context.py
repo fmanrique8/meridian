@@ -13,6 +13,7 @@ from meridian_data.config import bootstrap_env, load_kedro_credentials
 from meridian_data.pipelines.credentials_context import create_pipeline
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+EXPECTED_DEFAULT_MAX_NULL_RATIO = 0.2
 
 
 def _set_s3_env(monkeypatch) -> None:
@@ -135,6 +136,14 @@ def test_parameters_resolve_s3_bucket_name(monkeypatch) -> None:
 
     assert parameters["s3"]["bucket_name"] == "meridian-test"
     assert "GDPC1" in parameters["fred"]["series_ids"]
+    assert (
+        parameters["fred"]["data_quality"]["max_null_ratio_per_series"]
+        == EXPECTED_DEFAULT_MAX_NULL_RATIO
+    )
+    assert parameters["fred"]["data_quality"]["enforce_monotonic_dates"] is True
+    assert parameters["fred"]["data_quality"]["enforce_unique_series_date"] is True
+    assert parameters["fred"]["data_quality"]["enforce_numeric_parse"] is True
+    assert parameters["fred"]["data_quality"]["enforce_valid_dates"] is True
 
 
 def test_prod_env_resolves_fred_catalog_s3_paths_and_credentials(monkeypatch) -> None:

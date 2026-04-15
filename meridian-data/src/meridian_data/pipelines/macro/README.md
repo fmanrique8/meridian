@@ -70,6 +70,8 @@ Signal pipeline implementation starts only after these gates are met:
   - date field typed consistently
   - value field numeric consistently
   - partition keys documented in source README
+  - source-level data-quality assertions implemented (duplicates, ordering,
+    parse validity, null-threshold checks)
 
 3. Ops gates:
   - local and prod runs succeed for each source pipeline

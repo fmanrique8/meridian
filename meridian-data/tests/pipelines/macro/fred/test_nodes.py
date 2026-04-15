@@ -4,6 +4,7 @@ from datetime import date
 from typing import Any
 
 import polars as pl
+import pytest
 
 from meridian_data.pipelines.macro.fred import nodes
 from meridian_data.pipelines.macro.fred.schemas import (
@@ -73,6 +74,13 @@ def _fred_parameters() -> dict[str, Any]:
         "jitter_seconds": 0.0,
         "observation_start": "2026-02-01",
         "sort_order": "asc",
+        "data_quality": {
+            "max_null_ratio_per_series": 1.0,
+            "enforce_monotonic_dates": True,
+            "enforce_unique_series_date": True,
+            "enforce_numeric_parse": True,
+            "enforce_valid_dates": True,
+        },
         "series_ids": ["FEDFUNDS", "CPIAUCSL", "UNRATE", "GDPC1"],
         "run_date": "2026-04-15",
     }
@@ -130,3 +138,84 @@ def test_process_fred_series_handles_empty_input() -> None:
     assert processed_df.is_empty()
     assert processed_df.schema == nodes.PROCESSED_SCHEMA
     assert nodes.partition_fred_series_latest(processed_df) == {}
+
+
+def test_process_fred_series_fails_on_duplicate_series_date_rows() -> None:
+    raw_df = pl.DataFrame(
+        {
+            "series_id": ["UNRATE", "UNRATE"],
+            "series_name": ["UNRATE title", "UNRATE title"],
+            "frequency": ["Monthly", "Monthly"],
+            "units": ["Percent", "Percent"],
+            "seasonal_adjustment": ["Seasonally Adjusted", "Seasonally Adjusted"],
+            "last_updated": ["2026-04-15 12:00:00-05", "2026-04-15 12:00:00-05"],
+            "date": ["2026-03-01", "2026-03-01"],
+            "value_raw": ["4.33", "4.33"],
+        },
+        schema=nodes.RAW_SCHEMA,
+    )
+    params = _fred_parameters()
+
+    with pytest.raises(ValueError, match="duplicate \\(series_id, date\\) rows"):
+        nodes.process_fred_series(raw_df, params)
+
+
+def test_process_fred_series_fails_on_non_monotonic_dates() -> None:
+    raw_df = pl.DataFrame(
+        {
+            "series_id": ["UNRATE", "UNRATE"],
+            "series_name": ["UNRATE title", "UNRATE title"],
+            "frequency": ["Monthly", "Monthly"],
+            "units": ["Percent", "Percent"],
+            "seasonal_adjustment": ["Seasonally Adjusted", "Seasonally Adjusted"],
+            "last_updated": ["2026-04-15 12:00:00-05", "2026-04-15 12:00:00-05"],
+            "date": ["2026-03-01", "2026-02-01"],
+            "value_raw": ["4.33", "4.33"],
+        },
+        schema=nodes.RAW_SCHEMA,
+    )
+    params = _fred_parameters()
+
+    with pytest.raises(ValueError, match="dates are not monotonic"):
+        nodes.process_fred_series(raw_df, params)
+
+
+def test_process_fred_series_fails_on_invalid_numeric_value() -> None:
+    raw_df = pl.DataFrame(
+        {
+            "series_id": ["UNRATE"],
+            "series_name": ["UNRATE title"],
+            "frequency": ["Monthly"],
+            "units": ["Percent"],
+            "seasonal_adjustment": ["Seasonally Adjusted"],
+            "last_updated": ["2026-04-15 12:00:00-05"],
+            "date": ["2026-03-01"],
+            "value_raw": ["not-a-number"],
+        },
+        schema=nodes.RAW_SCHEMA,
+    )
+    params = _fred_parameters()
+
+    with pytest.raises(ValueError, match="non-numeric values"):
+        nodes.process_fred_series(raw_df, params)
+
+
+def test_process_fred_series_fails_on_null_ratio_threshold() -> None:
+    raw_df = pl.DataFrame(
+        {
+            "series_id": ["UNRATE", "UNRATE"],
+            "series_name": ["UNRATE title", "UNRATE title"],
+            "frequency": ["Monthly", "Monthly"],
+            "units": ["Percent", "Percent"],
+            "seasonal_adjustment": ["Seasonally Adjusted", "Seasonally Adjusted"],
+            "last_updated": ["2026-04-15 12:00:00-05", "2026-04-15 12:00:00-05"],
+            "date": ["2026-02-01", "2026-03-01"],
+            "value_raw": [".", "4.33"],
+        },
+        schema=nodes.RAW_SCHEMA,
+    )
+    params = _fred_parameters()
+    params["data_quality"]["max_null_ratio_per_series"] = 0.4
+
+    with pytest.raises(ValueError, match="null ratio exceeded threshold"):
+        nodes.process_fred_series(raw_df, params)

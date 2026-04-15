@@ -38,6 +38,12 @@ Configured under `conf/base/parameters.yml` as `fred`:
   - `sort_order` default: `asc`
   - `limit` optional
   - `run_date` optional (defaults to current date if unset)
+- Data quality assertions:
+  - `data_quality.max_null_ratio_per_series` (default `0.2`)
+  - `data_quality.enforce_monotonic_dates`
+  - `data_quality.enforce_unique_series_date`
+  - `data_quality.enforce_numeric_parse`
+  - `data_quality.enforce_valid_dates`
 - Series list (v1 core FRED set complete):
   - Inflation:
     - `CPIAUCSL` (headline CPI)
@@ -60,6 +66,9 @@ Configured under `conf/base/parameters.yml` as `fred`:
 
 Mixed frequencies (daily, weekly, monthly, quarterly) are stored as-ingested in
 Layer 0/1 ingestion for this wave; no resampling is applied.
+
+`series_ids` now has a single source of truth in `conf/base/parameters.yml`.
+Schema defaults no longer duplicate the list.
 
 ## Outputs and Partition Strategy
 

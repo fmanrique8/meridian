@@ -8,7 +8,11 @@ from typing import Any
 import polars as pl
 
 from .client import FredClient
-from .schemas import FredPipelineParameters, FredSeriesMetadata
+from .schemas import (
+    FredDataQualityParameters,
+    FredPipelineParameters,
+    FredSeriesMetadata,
+)
 
 RAW_SCHEMA: dict[str, pl.DataType] = {
     "series_id": pl.Utf8,
@@ -32,6 +36,8 @@ PROCESSED_SCHEMA: dict[str, pl.DataType] = {
     "value": pl.Float64,
     "run_date": pl.Date,
 }
+
+QUALITY_SAMPLE_LIMIT = 5
 
 
 def ingest_fred_series(fred_parameters: dict[str, Any]) -> pl.DataFrame:
@@ -89,20 +95,25 @@ def process_fred_series(
 
     parameters = FredPipelineParameters.model_validate(fred_parameters)
     run_date = parameters.run_date or date.today()
-
-    return (
-        fred_raw_series.with_columns(
-            [
-                pl.col("date").str.strptime(pl.Date, strict=False),
-                pl.when(pl.col("value_raw") == ".")
-                .then(None)
-                .otherwise(pl.col("value_raw").cast(pl.Float64, strict=False))
-                .alias("value"),
-                pl.lit(run_date).cast(pl.Date).alias("run_date"),
-            ]
-        )
-        .drop("value_raw")
-        .sort(["series_id", "date"])
+    processed_with_quality_columns = fred_raw_series.with_row_index(
+        "series_row_order"
+    ).with_columns(
+        [
+            pl.col("date").str.strptime(pl.Date, strict=False),
+            pl.when(pl.col("value_raw") == ".")
+            .then(None)
+            .otherwise(pl.col("value_raw").cast(pl.Float64, strict=False))
+            .alias("value"),
+            pl.lit(run_date).cast(pl.Date).alias("run_date"),
+        ]
+    )
+    _assert_data_quality(
+        processed_with_quality_columns,
+        sort_order=parameters.sort_order,
+        data_quality=parameters.data_quality,
+    )
+    return processed_with_quality_columns.drop(["value_raw", "series_row_order"]).sort(
+        ["series_id", "date"]
     )
 
 
@@ -198,3 +209,129 @@ def _build_observation_rows(
             }
         )
     return rows
+
+
+def _assert_data_quality(
+    fred_series_with_quality_columns: pl.DataFrame,
+    *,
+    sort_order: str,
+    data_quality: FredDataQualityParameters,
+) -> None:
+    """Validate duplicates, ordering, parse quality, and null thresholds."""
+    if data_quality.enforce_valid_dates:
+        _assert_valid_dates(fred_series_with_quality_columns)
+    if data_quality.enforce_numeric_parse:
+        _assert_numeric_parse(fred_series_with_quality_columns)
+    if data_quality.enforce_unique_series_date:
+        _assert_unique_series_date(fred_series_with_quality_columns)
+    if data_quality.enforce_monotonic_dates:
+        _assert_monotonic_dates(fred_series_with_quality_columns, sort_order=sort_order)
+    _assert_null_ratio_per_series(
+        fred_series_with_quality_columns,
+        max_null_ratio_per_series=data_quality.max_null_ratio_per_series,
+    )
+
+
+def _assert_valid_dates(fred_series_with_quality_columns: pl.DataFrame) -> None:
+    """Fail if any observation date cannot be parsed."""
+    invalid_dates = fred_series_with_quality_columns.filter(pl.col("date").is_null())
+    if invalid_dates.is_empty():
+        return
+
+    sample = invalid_dates.select(["series_id", "value_raw"]).head(QUALITY_SAMPLE_LIMIT)
+    raise ValueError(
+        "FRED data quality check failed: found rows with invalid observation dates. "
+        f"sample={sample.to_dicts()}"
+    )
+
+
+def _assert_numeric_parse(fred_series_with_quality_columns: pl.DataFrame) -> None:
+    """Fail if non-placeholder numeric strings cannot be parsed."""
+    invalid_numeric = fred_series_with_quality_columns.filter(
+        (pl.col("value_raw") != ".") & pl.col("value").is_null()
+    )
+    if invalid_numeric.is_empty():
+        return
+
+    sample = invalid_numeric.select(["series_id", "date", "value_raw"]).head(
+        QUALITY_SAMPLE_LIMIT
+    )
+    raise ValueError(
+        "FRED data quality check failed: found non-numeric values outside '.' "
+        f"placeholder handling. sample={sample.to_dicts()}"
+    )
+
+
+def _assert_unique_series_date(fred_series_with_quality_columns: pl.DataFrame) -> None:
+    """Fail if duplicate `(series_id, date)` keys are present."""
+    duplicates = (
+        fred_series_with_quality_columns.group_by(["series_id", "date"])
+        .len()
+        .filter(pl.col("len") > 1)
+    )
+    if duplicates.is_empty():
+        return
+
+    sample = duplicates.head(QUALITY_SAMPLE_LIMIT)
+    raise ValueError(
+        "FRED data quality check failed: duplicate (series_id, date) rows detected. "
+        f"sample={sample.to_dicts()}"
+    )
+
+
+def _assert_monotonic_dates(
+    fred_series_with_quality_columns: pl.DataFrame,
+    *,
+    sort_order: str,
+) -> None:
+    """Fail if source observation ordering violates the requested sort order."""
+    with_previous = fred_series_with_quality_columns.with_columns(
+        pl.col("date").shift(1).over("series_id").alias("previous_date")
+    )
+    if sort_order == "asc":
+        ordering_violations = with_previous.filter(
+            pl.col("previous_date").is_not_null()
+            & (pl.col("date") < pl.col("previous_date"))
+        )
+    else:
+        ordering_violations = with_previous.filter(
+            pl.col("previous_date").is_not_null()
+            & (pl.col("date") > pl.col("previous_date"))
+        )
+
+    if ordering_violations.is_empty():
+        return
+
+    sample = ordering_violations.select(
+        ["series_id", "previous_date", "date", "value_raw"]
+    ).head(QUALITY_SAMPLE_LIMIT)
+    raise ValueError(
+        "FRED data quality check failed: observation dates are not monotonic for "
+        f"sort_order={sort_order}. sample={sample.to_dicts()}"
+    )
+
+
+def _assert_null_ratio_per_series(
+    fred_series_with_quality_columns: pl.DataFrame,
+    *,
+    max_null_ratio_per_series: float,
+) -> None:
+    """Fail if per-series null ratio exceeds the configured threshold."""
+    null_ratio_by_series = fred_series_with_quality_columns.group_by("series_id").agg(
+        [
+            pl.len().alias("row_count"),
+            pl.col("value").null_count().alias("null_count"),
+            pl.col("value").is_null().mean().alias("null_ratio"),
+        ]
+    )
+    threshold_violations = null_ratio_by_series.filter(
+        pl.col("null_ratio") > max_null_ratio_per_series
+    )
+    if threshold_violations.is_empty():
+        return
+
+    sample = threshold_violations.head(QUALITY_SAMPLE_LIMIT)
+    raise ValueError(
+        "FRED data quality check failed: per-series null ratio exceeded threshold "
+        f"{max_null_ratio_per_series}. sample={sample.to_dicts()}"
+    )

@@ -13,6 +13,12 @@ fred:
   sort_order: asc
   limit:
   run_date:
+  data_quality:
+    max_null_ratio_per_series: 0.2
+    enforce_monotonic_dates: true
+    enforce_unique_series_date: true
+    enforce_numeric_parse: true
+    enforce_valid_dates: true
   series_ids:
     # ----- inflation
     - CPIAUCSL
