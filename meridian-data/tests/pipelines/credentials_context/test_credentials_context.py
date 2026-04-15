@@ -20,6 +20,7 @@ def _set_s3_env(monkeypatch) -> None:
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test-secret")
     monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-2")
     monkeypatch.setenv("S3_BUCKET_NAME", "meridian-test")
+    monkeypatch.setenv("FRED_API_KEY", "fred-test-key")
 
 
 def test_bootstrap_env_preserves_os_env_values(tmp_path, monkeypatch) -> None:
@@ -48,30 +49,30 @@ def test_load_kedro_credentials_returns_s3_payload(monkeypatch) -> None:
     assert credentials["key"] == "test-key"
     assert credentials["secret"] == "test-secret"
     assert credentials["client_kwargs"]["region_name"] == "us-east-2"
-    assert credentials["bucket_name"] == "meridian-test"
+    assert "bucket_name" not in credentials
 
 
 def test_credentials_pipeline_produces_output_for_downstream_node(monkeypatch) -> None:
     _set_s3_env(monkeypatch)
 
-    def _capture_bucket_name(s3_credentials: dict[str, Any]) -> str:
-        return s3_credentials["bucket_name"]
+    def _capture_region_name(s3_credentials: dict[str, Any]) -> str:
+        return s3_credentials["client_kwargs"]["region_name"]
 
     pipeline_under_test = create_pipeline() + pipeline(
         [
             node(
-                func=_capture_bucket_name,
+                func=_capture_region_name,
                 inputs="s3_credentials",
-                outputs="captured_bucket",
-                name="capture_bucket_name_node",
+                outputs="captured_region",
+                name="capture_region_name_node",
             )
         ]
     )
-    catalog = DataCatalog({"captured_bucket": MemoryDataset()})
+    catalog = DataCatalog({"captured_region": MemoryDataset()})
 
     SequentialRunner().run(pipeline_under_test, catalog)
 
-    assert catalog.load("captured_bucket") == "meridian-test"
+    assert catalog.load("captured_region") == "us-east-2"
 
 
 class CredentialEchoDataset(AbstractDataset):
@@ -111,4 +112,18 @@ def test_catalog_credentials_resolve_without_credentials_node(monkeypatch) -> No
     assert resolved_credentials["key"] == "test-key"
     assert resolved_credentials["secret"] == "test-secret"
     assert resolved_credentials["client_kwargs"]["region_name"] == "us-east-2"
-    assert resolved_credentials["bucket_name"] == "meridian-test"
+    assert "bucket_name" not in resolved_credentials
+
+
+def test_parameters_resolve_s3_bucket_name(monkeypatch) -> None:
+    _set_s3_env(monkeypatch)
+
+    conf_path = PROJECT_ROOT / "conf"
+    loader = OmegaConfigLoader(
+        conf_source=str(conf_path),
+        env="local",
+        custom_resolvers={"oc.env": lambda key, default=None: os.getenv(key, default)},
+    )
+    parameters = loader["parameters"]
+
+    assert parameters["s3"]["bucket_name"] == "meridian-test"

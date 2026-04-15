@@ -2,6 +2,10 @@
 from the Kedro defaults. For further information, including these default values, see
 https://docs.kedro.org/en/stable/configure/configuration_basics/#configuration"""
 
+from __future__ import annotations
+
+import os
+
 from meridian_data.config import bootstrap_env
 
 # Load `.env` values once at startup while preserving explicitly exported OS env vars.
@@ -40,6 +44,8 @@ bootstrap_env()
 CONFIG_LOADER_ARGS = {
     "base_env": "base",
     "default_run_env": "local",
+    # Enable `${oc.env:VAR}` interpolation for non-credentials config (e.g. parameters).
+    "custom_resolvers": {"oc.env": lambda key, default=None: os.getenv(key, default)},
     # "config_patterns": {
     #     "spark" : ["spark*/"],
     #     "parameters": ["parameters*", "parameters*/**", "**/parameters*"],

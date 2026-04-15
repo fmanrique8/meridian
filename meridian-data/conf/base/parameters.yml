@@ -1,0 +1,2 @@
+s3:
+  bucket_name: ${oc.env:S3_BUCKET_NAME}
