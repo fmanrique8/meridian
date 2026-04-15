@@ -1,2 +1,19 @@
 s3:
   bucket_name: ${oc.env:S3_BUCKET_NAME}
+
+fred:
+  api_key: ${oc.env:FRED_API_KEY}
+  base_url: https://api.stlouisfed.org/fred
+  timeout_seconds: 20.0
+  max_retries: 3
+  backoff_seconds: 0.5
+  jitter_seconds: 0.2
+  observation_start: 1990-01-01
+  observation_end:
+  sort_order: asc
+  limit:
+  run_date:
+  series_ids:
+    - FEDFUNDS
+    - CPIAUCSL
+    - UNRATE

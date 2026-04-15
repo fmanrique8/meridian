@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from kedro.framework.project import find_pipelines
 from kedro.pipeline import Pipeline
+
+from meridian_data.pipelines.credentials_context import (
+    create_pipeline as create_credentials_context_pipeline,
+)
+from meridian_data.pipelines.macro.fred import create_pipeline as create_fred_pipeline
 
 
 def register_pipelines() -> dict[str, Pipeline]:
@@ -12,6 +16,10 @@ def register_pipelines() -> dict[str, Pipeline]:
     Returns:
         A mapping from pipeline names to ``Pipeline`` objects.
     """
-    pipelines = find_pipelines(raise_errors=True)
-    pipelines["__default__"] = sum(pipelines.values())
+    pipelines = {
+        "credentials_context": create_credentials_context_pipeline(),
+        "fred": create_fred_pipeline(),
+    }
+    # Keep default pipeline side-effect free for local test runs.
+    pipelines["__default__"] = pipelines["credentials_context"]
     return pipelines
