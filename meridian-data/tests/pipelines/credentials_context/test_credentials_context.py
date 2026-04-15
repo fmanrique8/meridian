@@ -144,6 +144,7 @@ def test_parameters_resolve_s3_bucket_name(monkeypatch) -> None:
     assert parameters["fred"]["data_quality"]["enforce_unique_series_date"] is True
     assert parameters["fred"]["data_quality"]["enforce_numeric_parse"] is True
     assert parameters["fred"]["data_quality"]["enforce_valid_dates"] is True
+    assert parameters["fred"]["sync_mode"] == "full"
 
 
 def test_prod_env_resolves_fred_catalog_s3_paths_and_credentials(monkeypatch) -> None:
@@ -179,5 +180,21 @@ def test_prod_env_resolves_fred_catalog_s3_paths_and_credentials(monkeypatch) ->
     )
     assert (
         catalog["macro__fred__primary__series_latest"]["type"]
+        == "partitions.PartitionedDataset"
+    )
+    assert (
+        catalog["macro__fred__raw__ingestion_metadata"]["path"]
+        == "s3://meridian-test/meridian/01_raw/macro/fred/ingestion_metadata"
+    )
+    assert (
+        catalog["macro__fred__raw__ingestion_metadata"]["type"]
+        == "partitions.PartitionedDataset"
+    )
+    assert (
+        catalog["macro__fred__primary__entity_watermarks"]["path"]
+        == "s3://meridian-test/meridian/03_primary/macro/fred/entity_watermarks"
+    )
+    assert (
+        catalog["macro__fred__primary__entity_watermarks"]["type"]
         == "partitions.PartitionedDataset"
     )

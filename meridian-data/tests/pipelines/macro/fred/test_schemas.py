@@ -36,3 +36,4 @@ def test_fred_pipeline_parameters_default_data_quality_values() -> None:
     assert parameters.data_quality.enforce_unique_series_date is True
     assert parameters.data_quality.enforce_numeric_parse is True
     assert parameters.data_quality.enforce_valid_dates is True
+    assert parameters.sync_mode == "full"

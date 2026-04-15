@@ -83,6 +83,7 @@ class FredPipelineParameters(BaseModel):
     observation_start: str | None = None
     observation_end: str | None = None
     sort_order: Literal["asc", "desc"] = "asc"
+    sync_mode: Literal["full", "incremental"] = "full"
     limit: int | None = None
     run_date: date | None = None
     series_ids: list[str]

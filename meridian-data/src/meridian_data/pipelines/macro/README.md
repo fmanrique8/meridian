@@ -36,6 +36,12 @@ Each source should publish two dataset families in catalog naming form:
   - Partition pattern: source-optimized keys (for FRED: `series_id/year`).
   - Purpose: efficient downstream access for analysis and feature generation.
 
+- Incremental metadata datasets:
+  - Snapshot pattern: `macro__<source>__raw__ingestion_metadata`
+  - Watermark pattern: `macro__<source>__primary__entity_watermarks`
+  - Canonical key: `entity_id` (optional source-specific alias columns allowed,
+    such as `series_id` in FRED).
+
 Environment policy:
 
 - `conf/base/catalog.yml` defines default local paths.

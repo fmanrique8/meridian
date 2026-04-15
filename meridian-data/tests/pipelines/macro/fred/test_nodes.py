@@ -15,6 +15,7 @@ from meridian_data.pipelines.macro.fred.schemas import (
 EXPECTED_ROWS = 8
 EXPECTED_ROWS_PER_SERIES_YEAR = 2
 EXPECTED_GDPC1_ROWS = 2
+EXPECTED_SERIES_COUNT = 4
 
 
 class StubFredClient:
@@ -130,6 +131,37 @@ def test_ingest_process_and_partition_fred_series(monkeypatch) -> None:
     assert latest_partitions["series_id=GDPC1/year=2025/fred_series_latest"].height == 1
     assert latest_partitions["series_id=GDPC1/year=2026/fred_series_latest"].height == 1
 
+    ingestion_metadata = nodes.build_fred_ingestion_metadata(
+        processed_df,
+        _fred_parameters(),
+    )
+    assert ingestion_metadata.height == EXPECTED_SERIES_COUNT
+    assert sorted(ingestion_metadata["entity_id"].to_list()) == sorted(
+        ["FEDFUNDS", "CPIAUCSL", "UNRATE", "GDPC1"]
+    )
+    assert sorted(ingestion_metadata["series_id"].to_list()) == sorted(
+        ["FEDFUNDS", "CPIAUCSL", "UNRATE", "GDPC1"]
+    )
+    assert "watermark_observation_date" in ingestion_metadata.columns
+    gdpc1_metadata = ingestion_metadata.filter(pl.col("entity_id") == "GDPC1")
+    assert gdpc1_metadata["watermark_observation_date"].to_list() == [date(2026, 1, 1)]
+
+    metadata_partitions = nodes.partition_fred_ingestion_metadata(ingestion_metadata)
+    assert list(metadata_partitions.keys()) == [
+        "run_date=2026-04-15/fred_ingestion_metadata"
+    ]
+    assert metadata_partitions[
+        "run_date=2026-04-15/fred_ingestion_metadata"
+    ].height == (EXPECTED_SERIES_COUNT)
+
+    watermark_partitions = nodes.partition_fred_entity_watermarks(ingestion_metadata)
+    assert sorted(watermark_partitions.keys()) == [
+        "entity_id=CPIAUCSL/fred_entity_watermark",
+        "entity_id=FEDFUNDS/fred_entity_watermark",
+        "entity_id=GDPC1/fred_entity_watermark",
+        "entity_id=UNRATE/fred_entity_watermark",
+    ]
+
 
 def test_process_fred_series_handles_empty_input() -> None:
     empty_raw = pl.DataFrame(schema=nodes.RAW_SCHEMA)
@@ -138,6 +170,11 @@ def test_process_fred_series_handles_empty_input() -> None:
     assert processed_df.is_empty()
     assert processed_df.schema == nodes.PROCESSED_SCHEMA
     assert nodes.partition_fred_series_latest(processed_df) == {}
+    metadata_df = nodes.build_fred_ingestion_metadata(processed_df, _fred_parameters())
+    assert metadata_df.is_empty()
+    assert metadata_df.schema == nodes.INGESTION_METADATA_SCHEMA
+    assert nodes.partition_fred_ingestion_metadata(metadata_df) == {}
+    assert nodes.partition_fred_entity_watermarks(metadata_df) == {}
 
 
 def test_process_fred_series_fails_on_duplicate_series_date_rows() -> None:

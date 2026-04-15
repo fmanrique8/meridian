@@ -10,10 +10,13 @@ def test_create_pipeline_has_expected_nodes() -> None:
 
     assert sorted(node_names) == sorted(
         [
+            "build_fred_ingestion_metadata_node",
             "ingest_fred_series_node",
+            "partition_fred_ingestion_metadata_node",
             "process_fred_series_node",
             "partition_fred_series_node",
             "partition_fred_series_latest_node",
+            "partition_fred_entity_watermarks_node",
         ]
     )
 

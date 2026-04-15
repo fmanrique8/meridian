@@ -2,42 +2,38 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date
+from time import perf_counter
 from typing import Any
 
 import polars as pl
 
 from .client import FredClient
-from .schemas import (
-    FredDataQualityParameters,
-    FredPipelineParameters,
-    FredSeriesMetadata,
+from .commons import (
+    INGESTION_METADATA_SCHEMA,
+    PROCESSED_SCHEMA,
+    RAW_SCHEMA,
+    SOURCE_NAME,
+    assert_data_quality,
+    build_entity_watermark_partitions,
+    build_ingestion_metadata_frame,
+    build_observation_rows,
+    build_run_date_partitions,
+    build_series_year_partitions,
+    log_kv_event,
+    now_utc_iso,
 )
+from .schemas import FredPipelineParameters
 
-RAW_SCHEMA: dict[str, pl.DataType] = {
-    "series_id": pl.Utf8,
-    "series_name": pl.Utf8,
-    "frequency": pl.Utf8,
-    "units": pl.Utf8,
-    "seasonal_adjustment": pl.Utf8,
-    "last_updated": pl.Utf8,
-    "date": pl.Utf8,
-    "value_raw": pl.Utf8,
-}
-
-PROCESSED_SCHEMA: dict[str, pl.DataType] = {
-    "series_id": pl.Utf8,
-    "series_name": pl.Utf8,
-    "frequency": pl.Utf8,
-    "units": pl.Utf8,
-    "seasonal_adjustment": pl.Utf8,
-    "last_updated": pl.Utf8,
-    "date": pl.Date,
-    "value": pl.Float64,
-    "run_date": pl.Date,
-}
-
-QUALITY_SAMPLE_LIMIT = 5
+LOGGER = logging.getLogger(__name__)
+INGEST_NODE = "ingest_fred_series_node"
+PROCESS_NODE = "process_fred_series_node"
+PARTITION_RAW_NODE = "partition_fred_series_node"
+PARTITION_LATEST_NODE = "partition_fred_series_latest_node"
+BUILD_METADATA_NODE = "build_fred_ingestion_metadata_node"
+PARTITION_METADATA_NODE = "partition_fred_ingestion_metadata_node"
+PARTITION_WATERMARK_NODE = "partition_fred_entity_watermarks_node"
 
 
 def ingest_fred_series(fred_parameters: dict[str, Any]) -> pl.DataFrame:
@@ -51,8 +47,21 @@ def ingest_fred_series(fred_parameters: dict[str, Any]) -> pl.DataFrame:
         Raw FRED observations with metadata and unparsed `value_raw`.
     """
     parameters = FredPipelineParameters.model_validate(fred_parameters)
-    rows: list[dict[str, str | None]] = []
+    run_date = parameters.run_date or date.today()
+    started_at = perf_counter()
+    log_kv_event(
+        level=logging.INFO,
+        event="ingest_start",
+        node=INGEST_NODE,
+        run_date=run_date,
+        status="started",
+        entity_count=len(parameters.series_ids),
+        sort_order=parameters.sort_order,
+        observation_start=parameters.observation_start,
+        observation_end=parameters.observation_end,
+    )
 
+    rows: list[dict[str, str | None]] = []
     with FredClient.from_parameters(parameters) as client:
         for series_id in parameters.series_ids:
             metadata = client.get_series(series_id=series_id)
@@ -64,16 +73,51 @@ def ingest_fred_series(fred_parameters: dict[str, Any]) -> pl.DataFrame:
                 limit=parameters.limit,
             )
             rows.extend(
-                _build_observation_rows(
+                build_observation_rows(
                     metadata=metadata,
                     series_id=series_id,
                     observations=observations,
                 )
             )
+            log_kv_event(
+                level=logging.INFO,
+                event="series_fetch_complete",
+                node=INGEST_NODE,
+                run_date=run_date,
+                status="ok",
+                row_count=len(observations),
+                entity_count=1,
+                entity_id=series_id,
+                source=SOURCE_NAME,
+            )
 
     if not rows:
+        duration_ms = int((perf_counter() - started_at) * 1000)
+        log_kv_event(
+            level=logging.WARNING,
+            event="ingest_complete",
+            node=INGEST_NODE,
+            run_date=run_date,
+            status="empty",
+            row_count=0,
+            entity_count=len(parameters.series_ids),
+            duration_ms=duration_ms,
+        )
         return pl.DataFrame(schema=RAW_SCHEMA)
-    return pl.DataFrame(rows, schema=RAW_SCHEMA)
+
+    raw_df = pl.DataFrame(rows, schema=RAW_SCHEMA)
+    duration_ms = int((perf_counter() - started_at) * 1000)
+    log_kv_event(
+        level=logging.INFO,
+        event="ingest_complete",
+        node=INGEST_NODE,
+        run_date=run_date,
+        status="ok",
+        row_count=raw_df.height,
+        entity_count=raw_df.get_column("series_id").n_unique(),
+        duration_ms=duration_ms,
+    )
+    return raw_df
 
 
 def process_fred_series(
@@ -90,11 +134,23 @@ def process_fred_series(
     Returns:
         Processed long-format table with typed dates/numerics and `run_date`.
     """
-    if fred_raw_series.is_empty():
-        return pl.DataFrame(schema=PROCESSED_SCHEMA)
-
     parameters = FredPipelineParameters.model_validate(fred_parameters)
     run_date = parameters.run_date or date.today()
+    started_at = perf_counter()
+
+    if fred_raw_series.is_empty():
+        log_kv_event(
+            level=logging.INFO,
+            event="process_complete",
+            node=PROCESS_NODE,
+            run_date=run_date,
+            status="empty",
+            row_count=0,
+            entity_count=0,
+            duration_ms=0,
+        )
+        return pl.DataFrame(schema=PROCESSED_SCHEMA)
+
     processed_with_quality_columns = fred_raw_series.with_row_index(
         "series_row_order"
     ).with_columns(
@@ -107,14 +163,56 @@ def process_fred_series(
             pl.lit(run_date).cast(pl.Date).alias("run_date"),
         ]
     )
-    _assert_data_quality(
-        processed_with_quality_columns,
-        sort_order=parameters.sort_order,
-        data_quality=parameters.data_quality,
+    try:
+        assert_data_quality(
+            processed_with_quality_columns,
+            sort_order=parameters.sort_order,
+            data_quality=parameters.data_quality,
+        )
+    except Exception as exc:
+        duration_ms = int((perf_counter() - started_at) * 1000)
+        log_kv_event(
+            level=logging.ERROR,
+            event="dq_check_fail",
+            node=PROCESS_NODE,
+            run_date=run_date,
+            status="failed",
+            row_count=processed_with_quality_columns.height,
+            entity_count=processed_with_quality_columns.get_column(
+                "series_id"
+            ).n_unique(),
+            duration_ms=duration_ms,
+            error=str(exc),
+        )
+        raise
+
+    log_kv_event(
+        level=logging.INFO,
+        event="dq_check_pass",
+        node=PROCESS_NODE,
+        run_date=run_date,
+        status="ok",
+        row_count=processed_with_quality_columns.height,
+        entity_count=processed_with_quality_columns.get_column("series_id").n_unique(),
     )
-    return processed_with_quality_columns.drop(["value_raw", "series_row_order"]).sort(
-        ["series_id", "date"]
+
+    processed_df = processed_with_quality_columns.drop(
+        ["value_raw", "series_row_order"]
+    ).sort(["series_id", "date"])
+    duration_ms = int((perf_counter() - started_at) * 1000)
+    log_kv_event(
+        level=logging.INFO,
+        event="process_complete",
+        node=PROCESS_NODE,
+        run_date=run_date,
+        status="ok",
+        row_count=processed_df.height,
+        entity_count=processed_df.get_column("series_id").n_unique(),
+        duration_ms=duration_ms,
+        min_observation_date=processed_df.get_column("date").min(),
+        max_observation_date=processed_df.get_column("date").max(),
     )
+    return processed_df
 
 
 def partition_fred_series(
@@ -130,19 +228,38 @@ def partition_fred_series(
         Mapping of partition keys to partition dataframes.
     """
     if fred_processed_series.is_empty():
+        log_kv_event(
+            level=logging.INFO,
+            event="partition_write_complete",
+            node=PARTITION_RAW_NODE,
+            run_date=None,
+            status="empty",
+            row_count=0,
+            entity_count=0,
+            partition_count=0,
+            dataset="macro__fred__raw__series",
+        )
         return {}
 
-    with_run_date = fred_processed_series.with_columns(
-        pl.col("run_date").dt.strftime("%Y-%m-%d").alias("run_date_partition")
+    started_at = perf_counter()
+    run_date = fred_processed_series.get_column("run_date").min()
+    partitions = build_run_date_partitions(
+        fred_processed_series,
+        filename_stem="fred_series",
     )
-    partitions: dict[str, pl.DataFrame] = {}
-
-    for run_date in with_run_date.get_column("run_date_partition").unique().to_list():
-        key = f"run_date={run_date}/fred_series"
-        partitions[key] = with_run_date.filter(
-            pl.col("run_date_partition") == run_date
-        ).drop("run_date_partition")
-
+    duration_ms = int((perf_counter() - started_at) * 1000)
+    log_kv_event(
+        level=logging.INFO,
+        event="partition_write_complete",
+        node=PARTITION_RAW_NODE,
+        run_date=run_date,
+        status="ok",
+        row_count=fred_processed_series.height,
+        entity_count=fred_processed_series.get_column("series_id").n_unique(),
+        duration_ms=duration_ms,
+        partition_count=len(partitions),
+        dataset="macro__fred__raw__series",
+    )
     return partitions
 
 
@@ -159,179 +276,186 @@ def partition_fred_series_latest(
         Mapping of partition keys to partition dataframes.
     """
     if fred_processed_series.is_empty():
+        log_kv_event(
+            level=logging.INFO,
+            event="partition_write_complete",
+            node=PARTITION_LATEST_NODE,
+            run_date=None,
+            status="empty",
+            row_count=0,
+            entity_count=0,
+            partition_count=0,
+            dataset="macro__fred__primary__series_latest",
+        )
         return {}
 
-    with_partition_keys = fred_processed_series.with_columns(
-        [
-            pl.col("series_id").alias("series_id_partition"),
-            pl.col("date").dt.year().cast(pl.Int64).alias("year_partition"),
-        ]
+    started_at = perf_counter()
+    run_date = fred_processed_series.get_column("run_date").min()
+    partitions = build_series_year_partitions(
+        fred_processed_series,
+        filename_stem="fred_series_latest",
     )
-    partitions: dict[str, pl.DataFrame] = {}
-
-    partition_values = with_partition_keys.select(
-        ["series_id_partition", "year_partition"]
-    ).unique()
-    series_ids = partition_values.get_column("series_id_partition").to_list()
-    years = partition_values.get_column("year_partition").to_list()
-
-    for series_id_value, year_value in zip(series_ids, years, strict=True):
-        series_id = str(series_id_value)
-        year = int(year_value)
-        key = f"series_id={series_id}/year={year}/fred_series_latest"
-        partitions[key] = with_partition_keys.filter(
-            (pl.col("series_id_partition") == series_id)
-            & (pl.col("year_partition") == year)
-        ).drop(["series_id_partition", "year_partition"])
-
+    duration_ms = int((perf_counter() - started_at) * 1000)
+    log_kv_event(
+        level=logging.INFO,
+        event="partition_write_complete",
+        node=PARTITION_LATEST_NODE,
+        run_date=run_date,
+        status="ok",
+        row_count=fred_processed_series.height,
+        entity_count=fred_processed_series.get_column("series_id").n_unique(),
+        duration_ms=duration_ms,
+        partition_count=len(partitions),
+        dataset="macro__fred__primary__series_latest",
+    )
     return partitions
 
 
-def _build_observation_rows(
-    *,
-    metadata: FredSeriesMetadata,
-    series_id: str,
-    observations: list[Any],
-) -> list[dict[str, str | None]]:
-    """Normalize FRED observation rows with metadata fields."""
-    rows: list[dict[str, str | None]] = []
-    for observation in observations:
-        rows.append(
-            {
-                "series_id": series_id,
-                "series_name": metadata.title,
-                "frequency": metadata.frequency,
-                "units": metadata.units,
-                "seasonal_adjustment": metadata.seasonal_adjustment,
-                "last_updated": metadata.last_updated,
-                "date": observation.date,
-                "value_raw": observation.value,
-            }
+def build_fred_ingestion_metadata(
+    fred_processed_series: pl.DataFrame,
+    fred_parameters: dict[str, Any],
+) -> pl.DataFrame:
+    """
+    Build per-entity ingestion metadata for incremental watermarking.
+
+    Args:
+        fred_processed_series: Processed FRED observations.
+        fred_parameters: Runtime parameters under `params:fred`.
+
+    Returns:
+        Per-entity metadata table with run-level and watermark fields.
+    """
+    parameters = FredPipelineParameters.model_validate(fred_parameters)
+    run_date = parameters.run_date or date.today()
+    started_at = perf_counter()
+
+    if fred_processed_series.is_empty():
+        log_kv_event(
+            level=logging.INFO,
+            event="metadata_build_complete",
+            node=BUILD_METADATA_NODE,
+            run_date=run_date,
+            status="empty",
+            row_count=0,
+            entity_count=0,
+            duration_ms=0,
+            dataset="macro__fred__raw__ingestion_metadata",
         )
-    return rows
+        return pl.DataFrame(schema=INGESTION_METADATA_SCHEMA)
 
-
-def _assert_data_quality(
-    fred_series_with_quality_columns: pl.DataFrame,
-    *,
-    sort_order: str,
-    data_quality: FredDataQualityParameters,
-) -> None:
-    """Validate duplicates, ordering, parse quality, and null thresholds."""
-    if data_quality.enforce_valid_dates:
-        _assert_valid_dates(fred_series_with_quality_columns)
-    if data_quality.enforce_numeric_parse:
-        _assert_numeric_parse(fred_series_with_quality_columns)
-    if data_quality.enforce_unique_series_date:
-        _assert_unique_series_date(fred_series_with_quality_columns)
-    if data_quality.enforce_monotonic_dates:
-        _assert_monotonic_dates(fred_series_with_quality_columns, sort_order=sort_order)
-    _assert_null_ratio_per_series(
-        fred_series_with_quality_columns,
-        max_null_ratio_per_series=data_quality.max_null_ratio_per_series,
+    metadata_df = build_ingestion_metadata_frame(
+        fred_processed_series,
+        parameters=parameters,
+        run_date=run_date,
+        generated_at_utc=now_utc_iso(),
     )
-
-
-def _assert_valid_dates(fred_series_with_quality_columns: pl.DataFrame) -> None:
-    """Fail if any observation date cannot be parsed."""
-    invalid_dates = fred_series_with_quality_columns.filter(pl.col("date").is_null())
-    if invalid_dates.is_empty():
-        return
-
-    sample = invalid_dates.select(["series_id", "value_raw"]).head(QUALITY_SAMPLE_LIMIT)
-    raise ValueError(
-        "FRED data quality check failed: found rows with invalid observation dates. "
-        f"sample={sample.to_dicts()}"
+    duration_ms = int((perf_counter() - started_at) * 1000)
+    log_kv_event(
+        level=logging.INFO,
+        event="metadata_build_complete",
+        node=BUILD_METADATA_NODE,
+        run_date=run_date,
+        status="ok",
+        row_count=metadata_df.height,
+        entity_count=metadata_df.get_column("entity_id").n_unique(),
+        duration_ms=duration_ms,
+        dataset="macro__fred__raw__ingestion_metadata",
+        sync_mode=parameters.sync_mode,
     )
+    return metadata_df
 
 
-def _assert_numeric_parse(fred_series_with_quality_columns: pl.DataFrame) -> None:
-    """Fail if non-placeholder numeric strings cannot be parsed."""
-    invalid_numeric = fred_series_with_quality_columns.filter(
-        (pl.col("value_raw") != ".") & pl.col("value").is_null()
-    )
-    if invalid_numeric.is_empty():
-        return
+def partition_fred_ingestion_metadata(
+    fred_ingestion_metadata: pl.DataFrame,
+) -> dict[str, pl.DataFrame]:
+    """
+    Build run-date partition payload for ingestion metadata snapshots.
 
-    sample = invalid_numeric.select(["series_id", "date", "value_raw"]).head(
-        QUALITY_SAMPLE_LIMIT
-    )
-    raise ValueError(
-        "FRED data quality check failed: found non-numeric values outside '.' "
-        f"placeholder handling. sample={sample.to_dicts()}"
-    )
+    Args:
+        fred_ingestion_metadata: Per-entity ingestion metadata.
 
-
-def _assert_unique_series_date(fred_series_with_quality_columns: pl.DataFrame) -> None:
-    """Fail if duplicate `(series_id, date)` keys are present."""
-    duplicates = (
-        fred_series_with_quality_columns.group_by(["series_id", "date"])
-        .len()
-        .filter(pl.col("len") > 1)
-    )
-    if duplicates.is_empty():
-        return
-
-    sample = duplicates.head(QUALITY_SAMPLE_LIMIT)
-    raise ValueError(
-        "FRED data quality check failed: duplicate (series_id, date) rows detected. "
-        f"sample={sample.to_dicts()}"
-    )
-
-
-def _assert_monotonic_dates(
-    fred_series_with_quality_columns: pl.DataFrame,
-    *,
-    sort_order: str,
-) -> None:
-    """Fail if source observation ordering violates the requested sort order."""
-    with_previous = fred_series_with_quality_columns.with_columns(
-        pl.col("date").shift(1).over("series_id").alias("previous_date")
-    )
-    if sort_order == "asc":
-        ordering_violations = with_previous.filter(
-            pl.col("previous_date").is_not_null()
-            & (pl.col("date") < pl.col("previous_date"))
+    Returns:
+        Mapping of run-date partition keys to metadata dataframes.
+    """
+    if fred_ingestion_metadata.is_empty():
+        log_kv_event(
+            level=logging.INFO,
+            event="partition_write_complete",
+            node=PARTITION_METADATA_NODE,
+            run_date=None,
+            status="empty",
+            row_count=0,
+            entity_count=0,
+            partition_count=0,
+            dataset="macro__fred__raw__ingestion_metadata",
         )
-    else:
-        ordering_violations = with_previous.filter(
-            pl.col("previous_date").is_not_null()
-            & (pl.col("date") > pl.col("previous_date"))
+        return {}
+
+    started_at = perf_counter()
+    run_date = fred_ingestion_metadata.get_column("run_date").min()
+    partitions = build_run_date_partitions(
+        fred_ingestion_metadata,
+        filename_stem="fred_ingestion_metadata",
+    )
+    duration_ms = int((perf_counter() - started_at) * 1000)
+    log_kv_event(
+        level=logging.INFO,
+        event="partition_write_complete",
+        node=PARTITION_METADATA_NODE,
+        run_date=run_date,
+        status="ok",
+        row_count=fred_ingestion_metadata.height,
+        entity_count=fred_ingestion_metadata.get_column("entity_id").n_unique(),
+        duration_ms=duration_ms,
+        partition_count=len(partitions),
+        dataset="macro__fred__raw__ingestion_metadata",
+    )
+    return partitions
+
+
+def partition_fred_entity_watermarks(
+    fred_ingestion_metadata: pl.DataFrame,
+) -> dict[str, pl.DataFrame]:
+    """
+    Build query-friendly per-entity watermark partitions for incremental reads.
+
+    Args:
+        fred_ingestion_metadata: Per-entity ingestion metadata.
+
+    Returns:
+        Mapping of per-entity partition keys to watermark metadata dataframes.
+    """
+    if fred_ingestion_metadata.is_empty():
+        log_kv_event(
+            level=logging.INFO,
+            event="partition_write_complete",
+            node=PARTITION_WATERMARK_NODE,
+            run_date=None,
+            status="empty",
+            row_count=0,
+            entity_count=0,
+            partition_count=0,
+            dataset="macro__fred__primary__entity_watermarks",
         )
+        return {}
 
-    if ordering_violations.is_empty():
-        return
-
-    sample = ordering_violations.select(
-        ["series_id", "previous_date", "date", "value_raw"]
-    ).head(QUALITY_SAMPLE_LIMIT)
-    raise ValueError(
-        "FRED data quality check failed: observation dates are not monotonic for "
-        f"sort_order={sort_order}. sample={sample.to_dicts()}"
+    started_at = perf_counter()
+    run_date = fred_ingestion_metadata.get_column("run_date").min()
+    partitions = build_entity_watermark_partitions(
+        fred_ingestion_metadata,
+        filename_stem="fred_entity_watermark",
     )
-
-
-def _assert_null_ratio_per_series(
-    fred_series_with_quality_columns: pl.DataFrame,
-    *,
-    max_null_ratio_per_series: float,
-) -> None:
-    """Fail if per-series null ratio exceeds the configured threshold."""
-    null_ratio_by_series = fred_series_with_quality_columns.group_by("series_id").agg(
-        [
-            pl.len().alias("row_count"),
-            pl.col("value").null_count().alias("null_count"),
-            pl.col("value").is_null().mean().alias("null_ratio"),
-        ]
+    duration_ms = int((perf_counter() - started_at) * 1000)
+    log_kv_event(
+        level=logging.INFO,
+        event="partition_write_complete",
+        node=PARTITION_WATERMARK_NODE,
+        run_date=run_date,
+        status="ok",
+        row_count=fred_ingestion_metadata.height,
+        entity_count=fred_ingestion_metadata.get_column("entity_id").n_unique(),
+        duration_ms=duration_ms,
+        partition_count=len(partitions),
+        dataset="macro__fred__primary__entity_watermarks",
     )
-    threshold_violations = null_ratio_by_series.filter(
-        pl.col("null_ratio") > max_null_ratio_per_series
-    )
-    if threshold_violations.is_empty():
-        return
-
-    sample = threshold_violations.head(QUALITY_SAMPLE_LIMIT)
-    raise ValueError(
-        "FRED data quality check failed: per-series null ratio exceeded threshold "
-        f"{max_null_ratio_per_series}. sample={sample.to_dicts()}"
-    )
+    return partitions

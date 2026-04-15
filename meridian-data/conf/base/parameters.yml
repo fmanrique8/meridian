@@ -11,6 +11,7 @@ fred:
   observation_start: 1990-01-01
   observation_end:
   sort_order: asc
+  sync_mode: full
   limit:
   run_date:
   data_quality:

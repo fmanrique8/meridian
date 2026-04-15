@@ -17,3 +17,23 @@ macro__fred__primary__series_latest:
     file_format: parquet
     save_args:
       compression: zstd
+
+macro__fred__raw__ingestion_metadata:
+  type: partitions.PartitionedDataset
+  path: s3://${oc.env:S3_BUCKET_NAME}/meridian/01_raw/macro/fred/ingestion_metadata
+  filename_suffix: ".parquet"
+  dataset:
+    type: polars.EagerPolarsDataset
+    file_format: parquet
+    save_args:
+      compression: zstd
+
+macro__fred__primary__entity_watermarks:
+  type: partitions.PartitionedDataset
+  path: s3://${oc.env:S3_BUCKET_NAME}/meridian/03_primary/macro/fred/entity_watermarks
+  filename_suffix: ".parquet"
+  dataset:
+    type: polars.EagerPolarsDataset
+    file_format: parquet
+    save_args:
+      compression: zstd
