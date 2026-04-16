@@ -5,7 +5,7 @@ from kedro.framework.startup import bootstrap_project
 
 
 class TestKedroRun:
-    def test_kedro_run_default_pipeline(self, monkeypatch):
+    def test_kedro_run_credentials_context_pipeline(self, monkeypatch):
         monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test-key")
         monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test-secret")
         monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-2")
@@ -16,4 +16,4 @@ class TestKedroRun:
         bootstrap_project(project_path)
 
         with KedroSession.create(project_path=project_path) as session:
-            session.run()
+            session.run(pipeline_names=["credentials_context"])

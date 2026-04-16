@@ -14,7 +14,6 @@ from .commons import (
     INGESTION_METADATA_SCHEMA,
     PROCESSED_SCHEMA,
     RAW_SCHEMA,
-    SOURCE_NAME,
     assert_data_quality,
     build_entity_watermark_partitions,
     build_ingestion_metadata_frame,
@@ -88,7 +87,6 @@ def ingest_fred_series(fred_parameters: dict[str, Any]) -> pl.DataFrame:
                 row_count=len(observations),
                 entity_count=1,
                 entity_id=series_id,
-                source=SOURCE_NAME,
             )
 
     if not rows:

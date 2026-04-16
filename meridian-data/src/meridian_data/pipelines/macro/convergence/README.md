@@ -15,9 +15,9 @@ It is intentionally derived-only (no API ingestion) and consumes:
   - `macro__convergence__feature__state_history`
   - `macro__convergence__primary__state_latest`
 
-## Rule Implementation (Notion v1)
+## Rule Implementation
 
-Rules are implemented from the Convergence Signal Framework section 13:
+Rules are implemented as simple, interpretable formulas:
 
 - Inflation:
   - `cpi_yoy = 12m % change (CPIAUCSL)`
@@ -54,7 +54,29 @@ Defined under `params:convergence` in `conf/base/parameters.yml`:
 - `source_set_version` (traceability)
 - `thresholds.*` for all v1 rule knobs
 
-Threshold defaults are Notion-compatible and fully tunable from config.
+Threshold defaults are initial calibrated v1 values and fully tunable from
+config.
+
+Current defaults:
+
+- Inflation:
+  - `inflation_sticky_band: 0.3`
+- Labor:
+  - `labor_unrate_tight_threshold: -0.1`
+  - `labor_claims_tight_threshold: 0.0`
+  - `labor_unrate_deteriorating_threshold: 0.2`
+  - `labor_claims_deteriorating_threshold: 15000.0`
+- Growth:
+  - `growth_expansion_relative_threshold: 0.05`
+  - `growth_contraction_threshold: 0.0`
+- Liquidity:
+  - `liquidity_curve_tightening_threshold: 0.0`
+  - `liquidity_rates_tightening_threshold: 0.0`
+  - `liquidity_curve_easing_threshold: 0.25`
+  - `liquidity_rates_easing_threshold: -0.25`
+
+These values are intended as defensible starting points and should be refined
+with historical backtesting.
 
 ## Output Contract
 
@@ -71,14 +93,11 @@ Both history and latest rows include:
 
 ## Logging and Standards
 
-Convergence nodes emit structured key-value lifecycle logs aligned with:
-
-- `D:\projects\meridian\internal_docs\AI_AGENT_LOGGING_OBSERVABILITY_STANDARD.md`
-- `D:\projects\meridian\internal_docs\AI_AGENT_INCREMENTAL_SYNC_METADATA_STANDARD.md`
-
-Kedro logger configuration remains centralized in `conf/logging.yml`.
+Convergence nodes emit structured key-value lifecycle logs. Kedro logger
+configuration remains centralized in `conf/logging.yml`.
 
 ## Run
 
+- `kedro run` (default runs `fred + convergence`)
 - `kedro run --pipelines=fred,convergence`
 - `kedro run --env=prod --pipelines=fred,convergence`

@@ -9,21 +9,26 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ConvergenceThresholds(BaseModel):
-    """Threshold and rule knobs for v1 state/regime classification."""
+    """Threshold and rule knobs for v1 state/regime classification.
+
+    Note:
+        Defaults are initial calibrated v1 values chosen to reduce
+        noise-driven state flips. They remain configurable for future tuning.
+    """
 
     model_config = ConfigDict(extra="ignore")
 
     inflation_sticky_band: float = 0.3
-    labor_unrate_tight_threshold: float = 0.0
+    labor_unrate_tight_threshold: float = -0.1
     labor_claims_tight_threshold: float = 0.0
-    labor_unrate_deteriorating_threshold: float = 0.0
-    labor_claims_deteriorating_threshold: float = 0.0
-    growth_expansion_relative_threshold: float = 0.0
+    labor_unrate_deteriorating_threshold: float = 0.2
+    labor_claims_deteriorating_threshold: float = 15000.0
+    growth_expansion_relative_threshold: float = 0.05
     growth_contraction_threshold: float = 0.0
     liquidity_curve_tightening_threshold: float = 0.0
     liquidity_rates_tightening_threshold: float = 0.0
-    liquidity_curve_easing_threshold: float = 0.0
-    liquidity_rates_easing_threshold: float = 0.0
+    liquidity_curve_easing_threshold: float = 0.25
+    liquidity_rates_easing_threshold: float = -0.25
 
     @field_validator("inflation_sticky_band")
     @classmethod

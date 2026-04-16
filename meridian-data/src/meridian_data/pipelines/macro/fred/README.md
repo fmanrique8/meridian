@@ -125,6 +125,8 @@ When running with `--env=prod`, `conf/prod/catalog.yml` overrides these paths to
 
 ## Run and Test
 
+- Default project run:
+  - `kedro run` (executes `fred + convergence`)
 - Run local filesystem output:
   - `kedro run --pipelines=fred`
 - Run S3 output using prod config:

@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping
-from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from datetime import date, timedelta
 
 import polars as pl
+
+from meridian_data.commons.observability import (
+    build_log_kv_emitter,
+)
+from meridian_data.commons.observability import (
+    now_utc_iso as _now_utc_iso,
+)
 
 from .schemas import ConvergenceParameters
 
@@ -63,41 +69,12 @@ STATE_REQUIRED_DIAGNOSTICS = [
     "rates_trend",
 ]
 
-
-def now_utc_iso() -> str:
-    """Return current UTC timestamp in ISO-8601 format."""
-    return datetime.now(UTC).isoformat()
-
-
-def log_kv_event(  # noqa: PLR0913
-    *,
-    level: int,
-    event: str,
-    node: str,
-    run_date: date | None,
-    status: str,
-    row_count: int | None = None,
-    entity_count: int | None = None,
-    duration_ms: int | None = None,
-    **extra_fields: Any,
-) -> None:
-    """Emit a standardized key-value observability event."""
-    fields: dict[str, Any] = {
-        "event": event,
-        "pipeline": PIPELINE_NAME,
-        "source": SOURCE_NAME,
-        "node": node,
-        "run_date": run_date.isoformat() if run_date is not None else None,
-        "row_count": row_count,
-        "entity_count": entity_count,
-        "duration_ms": duration_ms,
-        "status": status,
-        **extra_fields,
-    }
-    payload = " ".join(
-        f"{key}={_format_log_value(value)}" for key, value in fields.items()
-    )
-    LOGGER.log(level, payload)
+log_kv_event = build_log_kv_emitter(
+    logger=LOGGER,
+    pipeline=PIPELINE_NAME,
+    source=SOURCE_NAME,
+)
+now_utc_iso = _now_utc_iso
 
 
 def materialize_partitions(partitions: PartitionInput) -> pl.DataFrame:
@@ -152,11 +129,8 @@ def normalize_fred_series_frame(fred_series_latest: pl.DataFrame) -> pl.DataFram
     return deduplicated
 
 
-def resolve_run_date(
-    parameters: ConvergenceParameters, source_data: pl.DataFrame
-) -> date:
+def resolve_run_date(parameters: ConvergenceParameters) -> date:
     """Resolve convergence run date from params or current execution date."""
-    _ = source_data
     if parameters.run_date is not None:
         return parameters.run_date
     return date.today()
@@ -476,12 +450,3 @@ def _cast_to_float(column: str) -> pl.Expr:
         .otherwise(pl.col(column).cast(pl.Float64, strict=False))
         .alias(column)
     )
-
-
-def _format_log_value(value: Any) -> str:
-    """Format key-value log field values consistently."""
-    if value is None:
-        return "null"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)

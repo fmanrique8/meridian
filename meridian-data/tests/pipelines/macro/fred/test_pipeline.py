@@ -21,10 +21,11 @@ def test_create_pipeline_has_expected_nodes() -> None:
     )
 
 
-def test_register_pipelines_includes_fred_and_default_is_side_effect_free() -> None:
+def test_register_pipelines_includes_fred_and_default_runs_macro_flow() -> None:
     pipelines = register_pipelines()
     default_node_names = [node.name for node in pipelines["__default__"].nodes]
 
     assert "fred" in pipelines
     assert "credentials_context" in pipelines
-    assert "ingest_fred_series_node" not in default_node_names
+    assert "ingest_fred_series_node" in default_node_names
+    assert "build_convergence_state_history_node" in default_node_names

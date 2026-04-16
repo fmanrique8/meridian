@@ -24,6 +24,5 @@ def register_pipelines() -> dict[str, Pipeline]:
         "fred": create_fred_pipeline(),
         "convergence": create_convergence_pipeline(),
     }
-    # Keep default pipeline side-effect free for local test runs.
-    pipelines["__default__"] = pipelines["credentials_context"]
+    pipelines["__default__"] = pipelines["fred"] + pipelines["convergence"]
     return pipelines

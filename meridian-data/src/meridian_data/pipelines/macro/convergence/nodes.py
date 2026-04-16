@@ -58,7 +58,7 @@ def build_convergence_state_history(
     series_latest_df = normalize_fred_series_frame(
         materialize_partitions(fred_series_latest)
     )
-    run_date = resolve_run_date(parameters, series_latest_df)
+    run_date = resolve_run_date(parameters)
     watermarks_df = materialize_partitions(fred_entity_watermarks)
 
     if series_latest_df.is_empty():

@@ -18,9 +18,10 @@ def test_create_pipeline_has_expected_nodes() -> None:
     )
 
 
-def test_register_pipelines_includes_convergence() -> None:
+def test_register_pipelines_includes_convergence_in_default() -> None:
     pipelines = register_pipelines()
     default_node_names = [node.name for node in pipelines["__default__"].nodes]
 
     assert "convergence" in pipelines
-    assert "build_convergence_state_history_node" not in default_node_names
+    assert "build_convergence_state_history_node" in default_node_names
+    assert "ingest_fred_series_node" in default_node_names

@@ -14,7 +14,19 @@ from meridian_data.pipelines.credentials_context import create_pipeline
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 EXPECTED_DEFAULT_MAX_NULL_RATIO = 0.2
-EXPECTED_STICKY_BAND = 0.3
+EXPECTED_CONVERGENCE_THRESHOLDS = {
+    "inflation_sticky_band": 0.3,
+    "labor_unrate_tight_threshold": -0.1,
+    "labor_claims_tight_threshold": 0.0,
+    "labor_unrate_deteriorating_threshold": 0.2,
+    "labor_claims_deteriorating_threshold": 15000.0,
+    "growth_expansion_relative_threshold": 0.05,
+    "growth_contraction_threshold": 0.0,
+    "liquidity_curve_tightening_threshold": 0.0,
+    "liquidity_rates_tightening_threshold": 0.0,
+    "liquidity_curve_easing_threshold": 0.25,
+    "liquidity_rates_easing_threshold": -0.25,
+}
 
 
 def _set_s3_env(monkeypatch) -> None:
@@ -148,10 +160,7 @@ def test_parameters_resolve_s3_bucket_name(monkeypatch) -> None:
     assert parameters["fred"]["sync_mode"] == "full"
     assert parameters["convergence"]["time_grain"] == "weekly"
     assert parameters["convergence"]["week_anchor"] == "friday"
-    assert (
-        parameters["convergence"]["thresholds"]["inflation_sticky_band"]
-        == EXPECTED_STICKY_BAND
-    )
+    assert parameters["convergence"]["thresholds"] == EXPECTED_CONVERGENCE_THRESHOLDS
 
 
 def test_prod_env_resolves_fred_catalog_s3_paths_and_credentials(monkeypatch) -> None:
