@@ -6,6 +6,7 @@ Kedro project for Meridian macro ingestion and convergence signal generation.
 
 - `fred`: FRED ingestion, processing, partitioning, and ingestion metadata
 - `convergence`: FRED-first weekly Layer-1 macro states
+- `market_yfinance`: ETF daily OHLCV ingestion with incremental symbol watermarks
 - `credentials_context`: isolated credentials loading context
 
 ## Default Run Behavior
@@ -17,8 +18,10 @@ Use explicit selection when needed:
 ```powershell
 python -m kedro run --pipelines=fred
 python -m kedro run --pipelines=convergence
+python -m kedro run --pipelines=market_yfinance
 python -m kedro run --pipelines=credentials_context
 python -m kedro run --env=prod --pipelines=fred,convergence
+python -m kedro run --env=prod --pipelines=market_yfinance
 ```
 
 ## Dependency Source of Truth
