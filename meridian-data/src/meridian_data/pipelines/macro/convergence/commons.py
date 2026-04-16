@@ -43,6 +43,7 @@ STATE_SCHEMA: SchemaMap = {
     "yield_curve": pl.Float64(),
     "curve_trend": pl.Float64(),
     "rates_trend": pl.Float64(),
+    "energy_trend": pl.Float64(),
     "source_set_version": pl.String(),
     "run_date": pl.Date(),
 }
@@ -54,6 +55,9 @@ FRED_REQUIRED_SERIES = {
     "ICSA",
     "DGS10",
     "DGS2",
+    "DCOILWTICO",
+    "GASREGW",
+    "DHHNGSP",
 }
 
 STATE_REQUIRED_DIAGNOSTICS = [
@@ -67,6 +71,7 @@ STATE_REQUIRED_DIAGNOSTICS = [
     "yield_curve",
     "curve_trend",
     "rates_trend",
+    "energy_trend",
 ]
 
 log_kv_event = build_log_kv_emitter(
@@ -247,6 +252,33 @@ def build_growth_metrics(fred_series_latest: pl.DataFrame) -> pl.DataFrame:
             .alias("payrolls_6m"),
         ]
     ).select(["date", "payrolls_3m", "payrolls_6m"])
+
+
+def build_energy_metrics(fred_series_latest: pl.DataFrame) -> pl.DataFrame:
+    """Compute WTI 3-month percent-change energy trend metric."""
+    wti = _series_frame(fred_series_latest, "DCOILWTICO").rename({"value": "wti"})
+    if wti.is_empty():
+        return pl.DataFrame(schema={"date": pl.Date(), "energy_trend": pl.Float64()})
+
+    lag_reference = wti.select(
+        [
+            pl.col("date").alias("trend_lookup_date"),
+            pl.col("wti").alias("wti_lag"),
+        ]
+    ).sort("trend_lookup_date")
+
+    return (
+        wti.with_columns(pl.col("date").dt.offset_by("-3mo").alias("trend_lookup_date"))
+        .join_asof(
+            lag_reference,
+            on="trend_lookup_date",
+            strategy="backward",
+        )
+        .with_columns(
+            ((pl.col("wti") / pl.col("wti_lag")) - 1.0).mul(100.0).alias("energy_trend")
+        )
+        .select(["date", "energy_trend"])
+    )
 
 
 def build_liquidity_metrics(fred_series_latest: pl.DataFrame) -> pl.DataFrame:
