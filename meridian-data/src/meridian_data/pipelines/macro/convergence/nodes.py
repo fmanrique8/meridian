@@ -14,6 +14,7 @@ from .commons import (
     STATE_SCHEMA,
     apply_state_rules,
     asof_join_metrics,
+    build_energy_metrics,
     build_growth_metrics,
     build_inflation_metrics,
     build_labor_metrics,
@@ -91,6 +92,7 @@ def build_convergence_state_history(
     unrate_metrics, claims_metrics = build_labor_metrics(bounded_source)
     growth_metrics = build_growth_metrics(bounded_source)
     liquidity_metrics = build_liquidity_metrics(bounded_source)
+    energy_metrics = build_energy_metrics(bounded_source)
 
     start_date = bounded_source.get_column("date").min()
     weekly_timeline = build_weekly_timeline(start_date=start_date, end_date=run_date)
@@ -101,6 +103,7 @@ def build_convergence_state_history(
     weekly_metrics = asof_join_metrics(weekly_metrics, claims_metrics)
     weekly_metrics = asof_join_metrics(weekly_metrics, growth_metrics)
     weekly_metrics = asof_join_metrics(weekly_metrics, liquidity_metrics)
+    weekly_metrics = asof_join_metrics(weekly_metrics, energy_metrics)
     weekly_metrics = weekly_metrics.filter(
         pl.all_horizontal(
             [pl.col(column).is_not_null() for column in STATE_REQUIRED_DIAGNOSTICS]

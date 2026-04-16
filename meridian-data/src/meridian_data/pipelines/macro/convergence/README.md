@@ -37,6 +37,8 @@ Rules are implemented as simple, interpretable formulas:
   - `curve_trend = yield_curve(t) - yield_curve(t-3mo)`
   - `rates_trend = DGS10(t) - DGS10(t-3mo)`
   - states: `tightening`, `neutral`, `easing`
+- Energy:
+  - `energy_trend = 3m % change (DCOILWTICO)`
 - Macro regime precedence:
   1. `soft_landing`
   2. `stagflation_risk`
@@ -89,6 +91,7 @@ Both history and latest rows include:
   - `unrate_3m_change`, `claims_4w_avg`, `claims_trend`
   - `payrolls_3m`, `payrolls_6m`
   - `yield_curve`, `curve_trend`, `rates_trend`
+  - `energy_trend`
 - traceability: `source_set_version`, `run_date`
 
 ## Logging and Standards

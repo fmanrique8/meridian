@@ -85,6 +85,9 @@ def _build_partitioned_fred_series(run_date: date) -> dict[str, pl.DataFrame]:
     claims_values = [200_000.0 + 650.0 * idx for idx in range(len(weekly))]
     dgs10_values = [3.00 + 0.02 * idx for idx in range(len(weekly))]
     dgs2_values = [4.00 + 0.01 * idx for idx in range(len(weekly))]
+    wti_values = [70.0 + 0.60 * idx for idx in range(len(monthly))]
+    gasoline_values = [3.10 + 0.01 * idx for idx in range(len(monthly))]
+    natgas_values = [2.20 + 0.02 * idx for idx in range(len(monthly))]
 
     rows: list[dict[str, Any]] = []
     rows.extend(_rows_for_series("CPIAUCSL", monthly, cpi_values, run_date, "Monthly"))
@@ -95,6 +98,11 @@ def _build_partitioned_fred_series(run_date: date) -> dict[str, pl.DataFrame]:
     rows.extend(_rows_for_series("ICSA", weekly, claims_values, run_date, "Weekly"))
     rows.extend(_rows_for_series("DGS10", weekly, dgs10_values, run_date, "Daily"))
     rows.extend(_rows_for_series("DGS2", weekly, dgs2_values, run_date, "Daily"))
+    rows.extend(_rows_for_series("DCOILWTICO", monthly, wti_values, run_date, "Monthly"))
+    rows.extend(
+        _rows_for_series("GASREGW", monthly, gasoline_values, run_date, "Monthly")
+    )
+    rows.extend(_rows_for_series("DHHNGSP", monthly, natgas_values, run_date, "Monthly"))
 
     fred_series = pl.DataFrame(
         rows,
@@ -116,10 +124,30 @@ def _build_partitioned_fred_series(run_date: date) -> dict[str, pl.DataFrame]:
 def _build_partitioned_watermarks(run_date: date) -> dict[str, pl.DataFrame]:
     watermark_rows = pl.DataFrame(
         {
-            "entity_id": ["CPIAUCSL", "UNRATE", "PAYEMS", "ICSA", "DGS10", "DGS2"],
-            "series_id": ["CPIAUCSL", "UNRATE", "PAYEMS", "ICSA", "DGS10", "DGS2"],
-            "watermark_observation_date": [run_date] * 6,
-            "run_date": [run_date] * 6,
+            "entity_id": [
+                "CPIAUCSL",
+                "UNRATE",
+                "PAYEMS",
+                "ICSA",
+                "DGS10",
+                "DGS2",
+                "DCOILWTICO",
+                "GASREGW",
+                "DHHNGSP",
+            ],
+            "series_id": [
+                "CPIAUCSL",
+                "UNRATE",
+                "PAYEMS",
+                "ICSA",
+                "DGS10",
+                "DGS2",
+                "DCOILWTICO",
+                "GASREGW",
+                "DHHNGSP",
+            ],
+            "watermark_observation_date": [run_date] * 9,
+            "run_date": [run_date] * 9,
         }
     )
     return {"entity_id=synthetic/fred_entity_watermark": watermark_rows}
@@ -163,6 +191,7 @@ def test_build_state_history_and_latest_from_fred_partitions() -> None:
         for observation_date in history["as_of_date"]
     )
     assert history["run_date"].unique().to_list() == [run_date]
+    assert history["energy_trend"].null_count() == 0
 
     latest = build_convergence_state_latest(history, _convergence_parameters(run_date))
 
@@ -173,6 +202,7 @@ def test_build_state_history_and_latest_from_fred_partitions() -> None:
     assert latest["liquidity_state"].item() == "tightening"
     assert latest["macro_regime"].item() == "recession"
     assert latest["as_of_date"].item() <= run_date
+    assert latest["energy_trend"].item() is not None
 
     history_partitions = partition_convergence_state_history(history)
     assert list(history_partitions.keys()) == [
@@ -196,6 +226,7 @@ def test_apply_state_rules_uses_notion_condition_order_for_inflation() -> None:
             "yield_curve": [0.25],
             "curve_trend": [0.10],
             "rates_trend": [-0.15],
+            "energy_trend": [5.00],
         }
     )
     parameters = ConvergenceParameters()
@@ -214,14 +245,66 @@ def test_apply_state_rules_uses_notion_condition_order_for_inflation() -> None:
 def test_build_state_history_fails_when_required_series_missing() -> None:
     run_date = date(2026, 3, 27)
     fred_partitions = _build_partitioned_fred_series(run_date)
-    fred_df = next(iter(fred_partitions.values())).filter(pl.col("series_id") != "DGS2")
+    fred_df = next(iter(fred_partitions.values())).filter(
+        pl.col("series_id") != "DHHNGSP"
+    )
     missing_series_partitions = {
         "series_id=synthetic/year=2026/fred_series_latest": fred_df
     }
 
-    with pytest.raises(ValueError, match="missing from serving input"):
+    with pytest.raises(ValueError, match="DHHNGSP"):
         build_convergence_state_history(
             missing_series_partitions,
             _build_partitioned_watermarks(run_date),
             _convergence_parameters(run_date),
         )
+
+
+def test_build_state_history_returns_empty_when_wti_history_too_short() -> None:
+    run_date = date(2026, 3, 27)
+    fred_partitions = _build_partitioned_fred_series(run_date)
+    fred_df = next(iter(fred_partitions.values()))
+    short_wti = fred_df.filter(pl.col("series_id") == "DCOILWTICO").sort("date").head(2)
+    short_history_df = pl.concat(
+        [fred_df.filter(pl.col("series_id") != "DCOILWTICO"), short_wti],
+        how="vertical_relaxed",
+    )
+    short_history_partitions = {
+        "series_id=synthetic/year=2026/fred_series_latest": short_history_df
+    }
+
+    history = build_convergence_state_history(
+        short_history_partitions,
+        _build_partitioned_watermarks(run_date),
+        _convergence_parameters(run_date),
+    )
+
+    assert history.is_empty()
+    assert history.schema == STATE_SCHEMA
+
+
+def test_build_state_history_handles_null_wti_values() -> None:
+    run_date = date(2026, 3, 27)
+    fred_partitions = _build_partitioned_fred_series(run_date)
+    fred_df = next(iter(fred_partitions.values()))
+    with_null_wti = fred_df.with_columns(
+        pl.when(
+            (pl.col("series_id") == "DCOILWTICO")
+            & (pl.col("date").dt.month().is_in([2, 6, 10]))
+        )
+        .then(None)
+        .otherwise(pl.col("value"))
+        .alias("value")
+    )
+    null_wti_partitions = {
+        "series_id=synthetic/year=2026/fred_series_latest": with_null_wti
+    }
+
+    history = build_convergence_state_history(
+        null_wti_partitions,
+        _build_partitioned_watermarks(run_date),
+        _convergence_parameters(run_date),
+    )
+
+    assert history.height > 0
+    assert history["energy_trend"].null_count() == 0
