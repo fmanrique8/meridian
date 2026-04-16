@@ -36,7 +36,12 @@ def bootstrap_env(project_root: Path | None = None) -> list[Path]:
 def load_kedro_credentials(env: str = "local") -> dict[str, Any]:
     """Load and return the project's `s3` Kedro credentials for an environment."""
     conf_path = _project_root() / "conf"
-    loader = OmegaConfigLoader(conf_source=str(conf_path), env=env)
+    loader = OmegaConfigLoader(
+        conf_source=str(conf_path),
+        env=env,
+        base_env="base",
+        default_run_env="local",
+    )
     credentials = loader["credentials"].get("s3")
 
     if credentials is None:

@@ -62,3 +62,6 @@ pip-wheel-metadata/
 
 # Private internal docs (local only)
 internal_docs/
+
+# Local agent/tooling state
+.claude/

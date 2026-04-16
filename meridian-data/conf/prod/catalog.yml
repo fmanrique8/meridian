@@ -1,11 +1,6 @@
-# Here you can define all your datasets by using simple YAML syntax.
-#
-# Documentation for this file format can be found in "The Data Catalog"
-# Link: https://docs.kedro.org/en/stable/catalog-data/introduction/#data-catalog
-
 macro__fred__raw__series:
   type: partitions.PartitionedDataset
-  path: data/01_raw/macro/fred/series
+  path: s3://${oc.env:S3_BUCKET_NAME}/meridian/01_raw/macro/fred/series
   filename_suffix: ".parquet"
   dataset:
     type: polars.EagerPolarsDataset
@@ -15,7 +10,7 @@ macro__fred__raw__series:
 
 macro__fred__primary__series_latest:
   type: partitions.PartitionedDataset
-  path: data/03_primary/macro/fred/series_latest
+  path: s3://${oc.env:S3_BUCKET_NAME}/meridian/03_primary/macro/fred/series_latest
   filename_suffix: ".parquet"
   dataset:
     type: polars.EagerPolarsDataset
@@ -25,7 +20,7 @@ macro__fred__primary__series_latest:
 
 macro__fred__raw__ingestion_metadata:
   type: partitions.PartitionedDataset
-  path: data/01_raw/macro/fred/ingestion_metadata
+  path: s3://${oc.env:S3_BUCKET_NAME}/meridian/01_raw/macro/fred/ingestion_metadata
   filename_suffix: ".parquet"
   dataset:
     type: polars.EagerPolarsDataset
@@ -35,7 +30,7 @@ macro__fred__raw__ingestion_metadata:
 
 macro__fred__primary__entity_watermarks:
   type: partitions.PartitionedDataset
-  path: data/03_primary/macro/fred/entity_watermarks
+  path: s3://${oc.env:S3_BUCKET_NAME}/meridian/03_primary/macro/fred/entity_watermarks
   filename_suffix: ".parquet"
   dataset:
     type: polars.EagerPolarsDataset
@@ -45,7 +40,7 @@ macro__fred__primary__entity_watermarks:
 
 macro__convergence__feature__state_history:
   type: partitions.PartitionedDataset
-  path: data/04_feature/macro/convergence/state_history
+  path: s3://${oc.env:S3_BUCKET_NAME}/meridian/04_feature/macro/convergence/state_history
   filename_suffix: ".parquet"
   dataset:
     type: polars.EagerPolarsDataset
@@ -55,7 +50,7 @@ macro__convergence__feature__state_history:
 
 macro__convergence__primary__state_latest:
   type: partitions.PartitionedDataset
-  path: data/03_primary/macro/convergence/state_latest
+  path: s3://${oc.env:S3_BUCKET_NAME}/meridian/03_primary/macro/convergence/state_latest
   filename_suffix: ".parquet"
   dataset:
     type: polars.EagerPolarsDataset
