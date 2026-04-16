@@ -67,3 +67,33 @@ convergence:
     liquidity_rates_tightening_threshold: 0.0
     liquidity_curve_easing_threshold: 0.25
     liquidity_rates_easing_threshold: -0.25
+
+yfinance:
+  timeout_seconds: 20.0
+  max_retries: 3
+  backoff_seconds: 0.5
+  jitter_seconds: 0.2
+  history_years: 10
+  interval: 1d
+  sync_mode: incremental
+  overlap_days: 7
+  run_date:
+  source: yfinance
+  symbols:
+    - SPY
+    - QQQ
+    - IWM
+    - XLE
+    - XLP
+    - XLK
+    - XLF
+    - XLI
+    - XLV
+    - XLRE
+    - TLT
+    - GLD
+  data_quality:
+    max_null_ratio_per_symbol: 0.0
+    enforce_unique_symbol_date: true
+    enforce_valid_dates: true
+    enforce_non_null_ohlcv: true

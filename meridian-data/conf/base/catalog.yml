@@ -62,3 +62,61 @@ macro__convergence__primary__state_latest:
     file_format: parquet
     save_args:
       compression: zstd
+
+market__yfinance__raw__etf_prices:
+  type: partitions.PartitionedDataset
+  path: data/01_raw/market/yfinance/etf_prices
+  filename_suffix: ".parquet"
+  dataset:
+    type: polars.EagerPolarsDataset
+    file_format: parquet
+    save_args:
+      compression: zstd
+
+market__yfinance__primary__etf_prices_latest:
+  type: partitions.PartitionedDataset
+  path: data/03_primary/market/yfinance/etf_prices_latest
+  filename_suffix: ".parquet"
+  dataset:
+    type: polars.EagerPolarsDataset
+    file_format: parquet
+    save_args:
+      compression: zstd
+
+market__yfinance__primary__etf_prices_latest_existing:
+  type: partitions.IncrementalDataset
+  path: data/03_primary/market/yfinance/etf_prices_latest
+  checkpoint: ""
+  filename_suffix: ".parquet"
+  dataset:
+    type: polars.EagerPolarsDataset
+    file_format: parquet
+
+market__yfinance__raw__ingestion_metadata:
+  type: partitions.PartitionedDataset
+  path: data/01_raw/market/yfinance/ingestion_metadata
+  filename_suffix: ".parquet"
+  dataset:
+    type: polars.EagerPolarsDataset
+    file_format: parquet
+    save_args:
+      compression: zstd
+
+market__yfinance__primary__entity_watermarks:
+  type: partitions.PartitionedDataset
+  path: data/03_primary/market/yfinance/entity_watermarks
+  filename_suffix: ".parquet"
+  dataset:
+    type: polars.EagerPolarsDataset
+    file_format: parquet
+    save_args:
+      compression: zstd
+
+market__yfinance__primary__entity_watermarks_existing:
+  type: partitions.IncrementalDataset
+  path: data/03_primary/market/yfinance/entity_watermarks
+  checkpoint: ""
+  filename_suffix: ".parquet"
+  dataset:
+    type: polars.EagerPolarsDataset
+    file_format: parquet

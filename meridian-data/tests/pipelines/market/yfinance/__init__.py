@@ -1,0 +1,2 @@
+"""yfinance pipeline tests."""
+
