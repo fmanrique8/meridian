@@ -12,6 +12,8 @@ def test_create_pipeline_has_expected_nodes() -> None:
         [
             "build_convergence_state_history_node",
             "build_convergence_state_latest_node",
+            "partition_convergence_regime_latest_json_node",
+            "partition_convergence_regime_history_json_node",
             "partition_convergence_state_history_node",
             "partition_convergence_state_latest_node",
         ]

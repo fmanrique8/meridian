@@ -10,6 +10,7 @@ import polars as pl
 
 from .commons import (
     FRED_REQUIRED_SERIES,
+    REGIME_HISTORY_WINDOW_WEEKS,
     STATE_REQUIRED_DIAGNOSTICS,
     STATE_SCHEMA,
     apply_state_rules,
@@ -19,6 +20,7 @@ from .commons import (
     build_inflation_metrics,
     build_labor_metrics,
     build_liquidity_metrics,
+    build_regime_json_rows,
     build_state_history_partitions,
     build_state_latest_partition,
     build_weekly_timeline,
@@ -35,6 +37,8 @@ BUILD_HISTORY_NODE = "build_convergence_state_history_node"
 BUILD_LATEST_NODE = "build_convergence_state_latest_node"
 PARTITION_HISTORY_NODE = "partition_convergence_state_history_node"
 PARTITION_LATEST_NODE = "partition_convergence_state_latest_node"
+PARTITION_REGIME_LATEST_JSON_NODE = "partition_convergence_regime_latest_json_node"
+PARTITION_REGIME_HISTORY_JSON_NODE = "partition_convergence_regime_history_json_node"
 
 
 def build_convergence_state_history(
@@ -293,5 +297,112 @@ def partition_convergence_state_latest(
         entity_count=1,
         partition_count=len(partitions),
         dataset="macro__convergence__primary__state_latest",
+    )
+    return partitions
+
+
+def partition_convergence_regime_latest_json(
+    convergence_state_latest: pl.DataFrame,
+) -> dict[str, dict[str, Any]]:
+    """
+    Build single-file JSON partition for latest §13.6 regime artifact.
+
+    Args:
+        convergence_state_latest: Latest convergence state snapshot.
+
+    Returns:
+        Mapping of stable partition key to latest JSON object payload.
+    """
+    if convergence_state_latest.is_empty():
+        log_kv_event(
+            level=logging.INFO,
+            event="partition_write_complete",
+            node=PARTITION_REGIME_LATEST_JSON_NODE,
+            run_date=None,
+            status="empty",
+            row_count=0,
+            entity_count=0,
+            partition_count=0,
+            dataset="macro__convergence__primary__regime_latest",
+        )
+        return {}
+
+    started_at = perf_counter()
+    generated_at_utc = now_utc_iso()
+    regime_rows = build_regime_json_rows(
+        convergence_state_latest,
+        generated_at_utc=generated_at_utc,
+    )
+    if not regime_rows:
+        return {}
+
+    run_date = convergence_state_latest.get_column("run_date").max()
+    latest_payload = regime_rows[-1]
+    partitions = {"regime_latest/regime_latest": latest_payload}
+    duration_ms = int((perf_counter() - started_at) * 1000)
+    log_kv_event(
+        level=logging.INFO,
+        event="partition_write_complete",
+        node=PARTITION_REGIME_LATEST_JSON_NODE,
+        run_date=run_date,
+        status="ok",
+        row_count=1,
+        entity_count=1,
+        duration_ms=duration_ms,
+        partition_count=len(partitions),
+        dataset="macro__convergence__primary__regime_latest",
+    )
+    return partitions
+
+
+def partition_convergence_regime_history_json(
+    convergence_state_history: pl.DataFrame,
+) -> dict[str, list[dict[str, Any]]]:
+    """
+    Build single-file JSON partition for rolling §13.6 regime history artifact.
+
+    Args:
+        convergence_state_history: Weekly convergence state history.
+
+    Returns:
+        Mapping of stable partition key to ordered JSON history payload.
+    """
+    if convergence_state_history.is_empty():
+        log_kv_event(
+            level=logging.INFO,
+            event="partition_write_complete",
+            node=PARTITION_REGIME_HISTORY_JSON_NODE,
+            run_date=None,
+            status="empty",
+            row_count=0,
+            entity_count=0,
+            partition_count=0,
+            dataset="macro__convergence__primary__regime_history",
+        )
+        return {}
+
+    started_at = perf_counter()
+    generated_at_utc = now_utc_iso()
+    regime_rows = build_regime_json_rows(
+        convergence_state_history,
+        generated_at_utc=generated_at_utc,
+    )
+    if len(regime_rows) > REGIME_HISTORY_WINDOW_WEEKS:
+        regime_rows = regime_rows[-REGIME_HISTORY_WINDOW_WEEKS:]
+
+    run_date = convergence_state_history.get_column("run_date").max()
+    partitions = {"regime_history/regime_history": regime_rows}
+    duration_ms = int((perf_counter() - started_at) * 1000)
+    log_kv_event(
+        level=logging.INFO,
+        event="partition_write_complete",
+        node=PARTITION_REGIME_HISTORY_JSON_NODE,
+        run_date=run_date,
+        status="ok",
+        row_count=len(regime_rows),
+        entity_count=1,
+        duration_ms=duration_ms,
+        partition_count=len(partitions),
+        dataset="macro__convergence__primary__regime_history",
     )
     return partitions

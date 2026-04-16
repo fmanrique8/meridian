@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Mapping
 from datetime import date, timedelta
+from typing import Any
 
 import polars as pl
 
@@ -46,6 +47,25 @@ STATE_SCHEMA: SchemaMap = {
     "energy_trend": pl.Float64(),
     "source_set_version": pl.String(),
     "run_date": pl.Date(),
+}
+
+REGIME_JSON_FIELDS = [
+    "date",
+    "inflation_state",
+    "labor_state",
+    "growth_state",
+    "liquidity_state",
+    "macro_regime",
+    "bias",
+    "generated_at_utc",
+]
+REGIME_HISTORY_WINDOW_WEEKS = 104
+REGIME_BIAS_BY_MACRO_REGIME = {
+    "soft_landing": "bullish",
+    "stagflation_risk": "defensive",
+    "recession": "defensive",
+    "reacceleration": "neutral",
+    "mixed": "neutral",
 }
 
 FRED_REQUIRED_SERIES = {
@@ -458,6 +478,28 @@ def build_state_latest_partition(
     return {"state_latest/convergence_state_latest": convergence_state_latest}
 
 
+def build_regime_json_rows(
+    convergence_states: pl.DataFrame,
+    *,
+    generated_at_utc: str,
+) -> list[dict[str, Any]]:
+    """Build §13.6 JSON rows from convergence state frames."""
+    if convergence_states.is_empty():
+        return []
+    with_json_fields = (
+        convergence_states.sort("as_of_date")
+        .with_columns(
+            [
+                pl.col("as_of_date").dt.strftime("%Y-%m-%d").alias("date"),
+                _bias_from_macro_regime_expr(),
+                pl.lit(generated_at_utc).cast(pl.String()).alias("generated_at_utc"),
+            ]
+        )
+        .select(REGIME_JSON_FIELDS)
+    )
+    return with_json_fields.to_dicts()
+
+
 def _series_frame(dataset: pl.DataFrame, series_id: str) -> pl.DataFrame:
     """Return sorted [date, value] frame for one FRED series."""
     return (
@@ -481,4 +523,20 @@ def _cast_to_float(column: str) -> pl.Expr:
         .then(None)
         .otherwise(pl.col(column).cast(pl.Float64, strict=False))
         .alias(column)
+    )
+
+
+def _bias_from_macro_regime_expr() -> pl.Expr:
+    """Map macro regime states to v1 API bias labels."""
+    return (
+        pl.when(pl.col("macro_regime") == "soft_landing")
+        .then(pl.lit(REGIME_BIAS_BY_MACRO_REGIME["soft_landing"]))
+        .when(pl.col("macro_regime") == "stagflation_risk")
+        .then(pl.lit(REGIME_BIAS_BY_MACRO_REGIME["stagflation_risk"]))
+        .when(pl.col("macro_regime") == "recession")
+        .then(pl.lit(REGIME_BIAS_BY_MACRO_REGIME["recession"]))
+        .when(pl.col("macro_regime") == "reacceleration")
+        .then(pl.lit(REGIME_BIAS_BY_MACRO_REGIME["reacceleration"]))
+        .otherwise(pl.lit(REGIME_BIAS_BY_MACRO_REGIME["mixed"]))
+        .alias("bias")
     )

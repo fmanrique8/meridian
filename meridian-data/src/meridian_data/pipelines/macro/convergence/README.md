@@ -14,6 +14,8 @@ It is intentionally derived-only (no API ingestion) and consumes:
 - Output families:
   - `macro__convergence__feature__state_history`
   - `macro__convergence__primary__state_latest`
+  - `macro__convergence__primary__regime_latest` (JSON)
+  - `macro__convergence__primary__regime_history` (JSON)
 
 ## Rule Implementation
 
@@ -93,6 +95,20 @@ Both history and latest rows include:
   - `yield_curve`, `curve_trend`, `rates_trend`
   - `energy_trend`
 - traceability: `source_set_version`, `run_date`
+
+JSON artifacts (API-facing, §13.6 contract):
+
+- `regime_latest`: single object
+- `regime_history`: up to last 104 weekly objects
+- fields (strict order):
+  - `date`
+  - `inflation_state`
+  - `labor_state`
+  - `growth_state`
+  - `liquidity_state`
+  - `macro_regime`
+  - `bias`
+  - `generated_at_utc`
 
 ## Logging and Standards
 
