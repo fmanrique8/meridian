@@ -14,6 +14,7 @@ from meridian_data.pipelines.credentials_context import create_pipeline
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 EXPECTED_DEFAULT_MAX_NULL_RATIO = 0.2
+EXPECTED_STICKY_BAND = 0.3
 
 
 def _set_s3_env(monkeypatch) -> None:
@@ -145,6 +146,12 @@ def test_parameters_resolve_s3_bucket_name(monkeypatch) -> None:
     assert parameters["fred"]["data_quality"]["enforce_numeric_parse"] is True
     assert parameters["fred"]["data_quality"]["enforce_valid_dates"] is True
     assert parameters["fred"]["sync_mode"] == "full"
+    assert parameters["convergence"]["time_grain"] == "weekly"
+    assert parameters["convergence"]["week_anchor"] == "friday"
+    assert (
+        parameters["convergence"]["thresholds"]["inflation_sticky_band"]
+        == EXPECTED_STICKY_BAND
+    )
 
 
 def test_prod_env_resolves_fred_catalog_s3_paths_and_credentials(monkeypatch) -> None:
@@ -196,5 +203,21 @@ def test_prod_env_resolves_fred_catalog_s3_paths_and_credentials(monkeypatch) ->
     )
     assert (
         catalog["macro__fred__primary__entity_watermarks"]["type"]
+        == "partitions.PartitionedDataset"
+    )
+    assert (
+        catalog["macro__convergence__feature__state_history"]["path"]
+        == "s3://meridian-test/meridian/04_feature/macro/convergence/state_history"
+    )
+    assert (
+        catalog["macro__convergence__feature__state_history"]["type"]
+        == "partitions.PartitionedDataset"
+    )
+    assert (
+        catalog["macro__convergence__primary__state_latest"]["path"]
+        == "s3://meridian-test/meridian/03_primary/macro/convergence/state_latest"
+    )
+    assert (
+        catalog["macro__convergence__primary__state_latest"]["type"]
         == "partitions.PartitionedDataset"
     )

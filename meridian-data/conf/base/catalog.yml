@@ -42,3 +42,23 @@ macro__fred__primary__entity_watermarks:
     file_format: parquet
     save_args:
       compression: zstd
+
+macro__convergence__feature__state_history:
+  type: partitions.PartitionedDataset
+  path: data/04_feature/macro/convergence/state_history
+  filename_suffix: ".parquet"
+  dataset:
+    type: polars.EagerPolarsDataset
+    file_format: parquet
+    save_args:
+      compression: zstd
+
+macro__convergence__primary__state_latest:
+  type: partitions.PartitionedDataset
+  path: data/03_primary/macro/convergence/state_latest
+  filename_suffix: ".parquet"
+  dataset:
+    type: polars.EagerPolarsDataset
+    file_format: parquet
+    save_args:
+      compression: zstd

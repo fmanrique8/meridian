@@ -1,13 +1,19 @@
 # Macro Ingestion Architecture
 
 This document defines the ingestion-first architecture for macro sources in
-Meridian before Layer-1 signal computation begins.
+Meridian and the first derived Layer-1 convergence implementation.
 
 ## Objective
 
 Build stable source contracts first, then compute converged macro states.
 
-Signals are deferred until the source onboarding gates below are complete.
+Status:
+
+- `macro/fred` is the v1 ingestion backbone.
+- `macro/convergence` is now implemented as a derived FRED-first weekly
+  rules engine.
+- Cross-source enriched convergence (BLS/EIA/market inputs) remains gated by
+  onboarding milestones below.
 
 ## Source Boundaries and Onboarding Order
 
@@ -15,6 +21,7 @@ Signals are deferred until the source onboarding gates below are complete.
 2. BLS (`macro/bls`) [next]
 3. EIA (`macro/eia`) [after BLS]
 4. Market feed (`macro/markets/twelve_data`) [after EIA]
+5. Convergence enrichment (`macro/convergence` inputs beyond FRED) [after 1-4]
 
 Boundary rules:
 
@@ -65,7 +72,7 @@ Environment policy:
 
 ## Dependency Gates Before Layer-1 Signals
 
-Signal pipeline implementation starts only after these gates are met:
+Cross-source convergence enrichment starts only after these gates are met:
 
 1. Source ingestion gates:
   - each source has `client.py`, `schemas.py`, `nodes.py`, `pipeline.py`
@@ -84,5 +91,5 @@ Signal pipeline implementation starts only after these gates are met:
   - credentials wiring is env-var driven only
 
 When these gates are complete for FRED + BLS + EIA + market baseline,
-Layer-1 (`inflation_state`, `labor_state`, `growth_state`, `liquidity_state`,
-`macro_regime`) can be implemented on stable ingestion outputs.
+Layer-1 can move from FRED-only rules to multi-source convergence with
+energy and market overlays.

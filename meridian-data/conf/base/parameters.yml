@@ -42,3 +42,21 @@ fred:
     - DGS10
     - DGS2
     - T10Y2Y
+
+convergence:
+  run_date:
+  time_grain: weekly
+  week_anchor: friday
+  source_set_version: fred_v1
+  thresholds:
+    inflation_sticky_band: 0.3
+    labor_unrate_tight_threshold: 0.0
+    labor_claims_tight_threshold: 0.0
+    labor_unrate_deteriorating_threshold: 0.0
+    labor_claims_deteriorating_threshold: 0.0
+    growth_expansion_relative_threshold: 0.0
+    growth_contraction_threshold: 0.0
+    liquidity_curve_tightening_threshold: 0.0
+    liquidity_rates_tightening_threshold: 0.0
+    liquidity_curve_easing_threshold: 0.0
+    liquidity_rates_easing_threshold: 0.0

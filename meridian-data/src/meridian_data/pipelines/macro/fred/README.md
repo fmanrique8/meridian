@@ -147,6 +147,18 @@ No signal nodes are added yet for:
 Signal logic starts after ingestion architecture gates are completed for the
 remaining non-FRED source families.
 
+## Consumed by Convergence Pipeline
+
+`macro/fred` remains ingestion-focused and now serves as the source contract
+for `macro/convergence` (Layer-1 derived signals).
+
+Convergence reads:
+
+- `macro__fred__primary__series_latest` (formula inputs)
+- `macro__fred__primary__entity_watermarks` (coverage/monitoring)
+
+This keeps source ingestion concerns decoupled from signal derivation concerns.
+
 ## Logging and Observability
 
 FRED nodes now emit structured INFO logs for:
