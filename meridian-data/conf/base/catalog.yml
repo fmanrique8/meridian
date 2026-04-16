@@ -120,3 +120,17 @@ market__yfinance__primary__entity_watermarks_existing:
   dataset:
     type: polars.EagerPolarsDataset
     file_format: parquet
+
+macro__convergence__primary__regime_latest:
+  type: partitions.PartitionedDataset
+  path: data/03_primary/macro/convergence/regime_latest
+  filename_suffix: ".json"
+  dataset:
+    type: json.JSONDataset
+
+macro__convergence__primary__regime_history:
+  type: partitions.PartitionedDataset
+  path: data/03_primary/macro/convergence/regime_history
+  filename_suffix: ".json"
+  dataset:
+    type: json.JSONDataset

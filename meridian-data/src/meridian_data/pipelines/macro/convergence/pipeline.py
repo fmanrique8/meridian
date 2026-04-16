@@ -7,6 +7,8 @@ from kedro.pipeline import Pipeline, node, pipeline
 from .nodes import (
     build_convergence_state_history,
     build_convergence_state_latest,
+    partition_convergence_regime_history_json,
+    partition_convergence_regime_latest_json,
     partition_convergence_state_history,
     partition_convergence_state_latest,
 )
@@ -42,6 +44,18 @@ def create_pipeline(**kwargs) -> Pipeline:
                 ],
                 outputs="macro__convergence__staging__state_latest",
                 name="build_convergence_state_latest_node",
+            ),
+            node(
+                func=partition_convergence_regime_latest_json,
+                inputs="macro__convergence__staging__state_latest",
+                outputs="macro__convergence__primary__regime_latest",
+                name="partition_convergence_regime_latest_json_node",
+            ),
+            node(
+                func=partition_convergence_regime_history_json,
+                inputs="macro__convergence__staging__state_history",
+                outputs="macro__convergence__primary__regime_history",
+                name="partition_convergence_regime_history_json_node",
             ),
             node(
                 func=partition_convergence_state_history,

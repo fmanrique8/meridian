@@ -13,6 +13,8 @@ from meridian_data.pipelines.macro.convergence.commons import (
 from meridian_data.pipelines.macro.convergence.nodes import (
     build_convergence_state_history,
     build_convergence_state_latest,
+    partition_convergence_regime_history_json,
+    partition_convergence_regime_latest_json,
     partition_convergence_state_history,
     partition_convergence_state_latest,
 )
@@ -20,6 +22,19 @@ from meridian_data.pipelines.macro.convergence.schemas import ConvergenceParamet
 
 MONTHS_IN_YEAR = 12
 FRIDAY_WEEKDAY = 4
+REGIME_HISTORY_WINDOW_WEEKS = 104
+REGIME_JSON_KEYS = [
+    "date",
+    "inflation_state",
+    "labor_state",
+    "growth_state",
+    "liquidity_state",
+    "macro_regime",
+    "bias",
+    "generated_at_utc",
+]
+ALLOWED_BIAS = {"bullish", "defensive", "neutral"}
+SHORT_HISTORY_ROWS = 8
 
 
 def _monthly_dates(start_year: int, start_month: int, count: int) -> list[date]:
@@ -308,3 +323,68 @@ def test_build_state_history_handles_null_wti_values() -> None:
 
     assert history.height > 0
     assert history["energy_trend"].null_count() == 0
+
+
+def test_partition_regime_latest_json_emits_strict_136_schema() -> None:
+    run_date = date(2026, 3, 27)
+    history = build_convergence_state_history(
+        _build_partitioned_fred_series(run_date),
+        _build_partitioned_watermarks(run_date),
+        _convergence_parameters(run_date),
+    )
+    latest = build_convergence_state_latest(history, _convergence_parameters(run_date))
+
+    partitions = partition_convergence_regime_latest_json(latest)
+
+    assert list(partitions.keys()) == ["regime_latest/regime_latest"]
+    payload = partitions["regime_latest/regime_latest"]
+    assert list(payload.keys()) == REGIME_JSON_KEYS
+    assert payload["date"] == latest["as_of_date"].item().isoformat()
+    assert payload["bias"] in ALLOWED_BIAS
+    assert payload["generated_at_utc"]
+
+
+def test_partition_regime_history_json_caps_to_104_weeks() -> None:
+    as_of_dates = _weekly_dates(date(2024, 1, 5), 120)
+    synthetic_history = pl.DataFrame(
+        {
+            "as_of_date": as_of_dates,
+            "inflation_state": ["cooling"] * 120,
+            "labor_state": ["softening"] * 120,
+            "growth_state": ["slowdown"] * 120,
+            "liquidity_state": ["neutral"] * 120,
+            "macro_regime": ["soft_landing"] * 120,
+            "run_date": [date(2026, 4, 11)] * 120,
+        }
+    )
+
+    partitions = partition_convergence_regime_history_json(synthetic_history)
+
+    assert list(partitions.keys()) == ["regime_history/regime_history"]
+    payload = partitions["regime_history/regime_history"]
+    assert len(payload) == REGIME_HISTORY_WINDOW_WEEKS
+    assert list(payload[0].keys()) == REGIME_JSON_KEYS
+    assert payload[0]["date"] == as_of_dates[-REGIME_HISTORY_WINDOW_WEEKS].isoformat()
+    assert payload[-1]["date"] == as_of_dates[-1].isoformat()
+    assert {record["bias"] for record in payload} == {"bullish"}
+
+
+def test_partition_regime_history_json_emits_full_history_when_under_limit() -> None:
+    short_history = pl.DataFrame(
+        {
+            "as_of_date": _weekly_dates(date(2026, 1, 2), SHORT_HISTORY_ROWS),
+            "inflation_state": ["reaccelerating"] * SHORT_HISTORY_ROWS,
+            "labor_state": ["deteriorating"] * SHORT_HISTORY_ROWS,
+            "growth_state": ["contraction"] * SHORT_HISTORY_ROWS,
+            "liquidity_state": ["tightening"] * SHORT_HISTORY_ROWS,
+            "macro_regime": ["recession"] * SHORT_HISTORY_ROWS,
+            "run_date": [date(2026, 4, 11)] * SHORT_HISTORY_ROWS,
+        }
+    )
+
+    partitions = partition_convergence_regime_history_json(short_history)
+
+    payload = partitions["regime_history/regime_history"]
+    assert len(payload) == SHORT_HISTORY_ROWS
+    assert all(record["bias"] == "defensive" for record in payload)
+    assert all(record["generated_at_utc"] for record in payload)
